@@ -598,3 +598,5 @@ body.gold .top { border-bottom-color: rgba(var(--gold-rgb), .28); }
 .top.snug2 .seg button { padding: 4px 7px; }
 .top.snug2 .logo-img { width: 27px; height: 27px; }
 .top.snug2 .wordmark { font-size: 15px; }
+.coin-ic { width: 13px; height: 13px; display: block; }
+#subtabs button span:has(.coin-ic) { display: inline-flex; vertical-align: -2px; }
