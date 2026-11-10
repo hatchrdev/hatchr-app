@@ -287,6 +287,84 @@ footer a { color: var(--muted); }
   background: rgba(14, 15, 18, 0.8); border: 1px solid var(--line); border-radius: 999px; padding: 10px 14px; cursor: pointer; }
 .promo-sound:hover { border-color: var(--accent); }
 .promo-sound[aria-pressed="true"] { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+
+/* ---------- $HATCHR: the coin section. Gold is its own accent so it never competes with the green product UI ---------- */
+:root { --gold: #f6c453; --gold-deep: #c8922b; --gold-soft: rgba(246, 196, 83, 0.10); --gold-line: rgba(246, 196, 83, 0.35); }
+.preview-flag { position: fixed; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 20; font: 600 13px/1.3 var(--body); color: #1a1305; background: var(--gold); border-radius: 999px; padding: 8px 14px; box-shadow: 0 10px 30px -8px rgba(0,0,0,.7); max-width: calc(100% - 32px); text-align: center; }
+nav.top a.coin-link { color: var(--gold); display: inline-flex; align-items: center; gap: 6px; }
+nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 3px var(--gold-soft); }
+.coin-chip { display: inline-flex; align-items: center; gap: 8px; margin-top: 18px; font: 600 14px/1.2 var(--body); color: var(--fg); text-decoration: none; border: 1px solid var(--gold-line); background: var(--gold-soft); border-radius: 999px; padding: 8px 14px 8px 10px; }
+.coin-chip b { color: var(--gold); font-weight: 700; }
+.coin-chip:hover { border-color: var(--gold); }
+.coin-chip .mini-coin { width: 20px; height: 20px; }
+.mini-coin { display: inline-grid; place-items: center; border-radius: 50%; background: #0b0c0f; border: 2px solid var(--gold); flex: none; }
+.mini-coin svg { width: 62%; height: 62%; }
+.tape .gold { color: var(--gold); }
+
+.token .eyebrow, .token .step .n { color: var(--gold); }
+.token .head h2 em { font-style: normal; color: var(--gold); }
+.tk-hero { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 40px; align-items: center; }
+.tk-panel { border: 1px solid var(--gold-line); border-radius: 22px; padding: 26px; background: radial-gradient(120% 120% at 100% 0%, rgba(246,196,83,.14), rgba(246,196,83,0) 60%), var(--surface); display: grid; gap: 18px; min-width: 0; }
+.tk-id { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.big-coin { width: 76px; height: 76px; border-radius: 50%; display: grid; place-items: center; flex: none; background: radial-gradient(circle at 32% 28%, #1c1d22, #0b0c0f 70%); border: 4px solid var(--gold); box-shadow: 0 0 0 6px var(--gold-soft), inset 0 0 0 2px rgba(0,0,0,.6); }
+.big-coin svg { width: 46px; height: 46px; }
+.tk-id h3 { font: 800 30px/1 var(--display); letter-spacing: -0.02em; margin: 0 0 6px; }
+.tk-id .tick { font: 700 15px/1 var(--mono); color: var(--gold); }
+.tk-state { margin-left: auto; font: 700 12px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; border-radius: 999px; padding: 8px 12px; color: var(--warn); background: var(--warn-soft); border: 1px solid rgba(251,191,36,.3); }
+.tk-state.live { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.tk-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.tk-facts div { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+.tk-facts dt { font: 600 12px/1.3 var(--body); color: var(--muted); }
+.tk-facts dd { margin: 2px 0 0; font: 700 15px/1.3 var(--display); }
+.tk-address { border: 1px dashed var(--gold-line); border-radius: 14px; padding: 12px 14px; display: flex; align-items: center; gap: 12px; min-width: 0; }
+.tk-address > div { flex: 1; min-width: 0; }
+.tk-address .lab { font: 700 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: 6px; }
+.tk-address code { font-size: 14px; color: var(--gold); word-break: break-all; white-space: normal; background: none; padding: 0; }
+.tk-address .none { color: var(--muted); font-size: 15px; }
+.tk-copy { font: 600 13px/1 var(--body); color: var(--fg); background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 9px 13px; cursor: pointer; flex: none; }
+.tk-copy:hover { border-color: var(--gold); }
+.tk-warn { margin: 0; font-size: 14px; color: var(--muted); }
+.tk-warn b { color: var(--fg); }
+.btn.gold { background: var(--gold); color: #1a1305; }
+.btn.gold:hover { filter: brightness(1.06); }
+.btn[aria-disabled="true"] { opacity: .5; pointer-events: none; }
+.tk-stage { position: relative; display: flex; justify-content: center; padding: 6px 0 46px; }
+.tk-stage .phone { width: min(300px, 100%); border-color: var(--gold-line); }
+.tk-stage .float { position: absolute; right: 0; bottom: 0; width: min(280px, 62%); border-radius: 12px; overflow: hidden; border: 1px solid var(--gold-line); box-shadow: var(--shadow); }
+.tk-sub { font: 800 24px/1.15 var(--display); letter-spacing: -0.02em; margin: 56px 0 6px; }
+.tk-sub + p { color: var(--muted); margin-bottom: 18px; }
+.tiers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.tier { border: 1px solid var(--line); background: var(--surface); border-radius: 18px; padding: 22px; min-width: 0; }
+.tier.gold { border-color: var(--gold-line); background: radial-gradient(120% 120% at 100% 0%, rgba(246,196,83,.12), rgba(246,196,83,0) 60%), var(--surface); }
+.tier .name { font: 700 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.tier.gold .name { color: var(--gold); }
+.tier .need { font: 800 34px/1.05 var(--display); letter-spacing: -0.02em; margin: 10px 0 2px; font-variant-numeric: tabular-nums; }
+.tier .need small { font: 600 14px/1 var(--body); color: var(--muted); letter-spacing: 0; }
+.tier .share { color: var(--muted); font-size: 14px; margin-bottom: 14px; }
+.tier ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 9px; }
+.tier li { margin: 0; padding-left: 26px; position: relative; font-size: 15px; }
+.tier li::before { content: "✓"; position: absolute; left: 0; top: 0; color: var(--accent); font-weight: 700; }
+.tier.gold li::before { color: var(--gold); }
+.tier li span { display: block; color: var(--muted); font-size: 14px; }
+.honest { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.honest > div { border: 1px solid var(--line); border-radius: 18px; padding: 22px; background: var(--surface); min-width: 0; }
+.honest .no { border-color: rgba(248,113,113,.3); }
+.honest h4 { font: 700 17px/1.3 var(--display); margin: 0 0 10px; }
+.honest ul { margin: 0; padding-left: 20px; }
+.honest li { color: var(--muted); font-size: 15px; }
+.honest .no li::marker { color: var(--down); }
+.open-book { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 12px; margin: 0; }
+.open-book div { border: 1px solid var(--line); background: var(--surface); border-radius: 16px; padding: 16px 18px; min-width: 0; }
+.open-book dt { font: 700 12px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--gold); margin-bottom: 6px; }
+.open-book dd { margin: 0; color: var(--muted); font-size: 15px; }
+.open-book dd b { color: var(--fg); font-weight: 600; }
+.shipped { list-style: none; padding: 0; margin: 0; display: grid; gap: 0; max-width: none; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.shipped li { margin: 0; padding: 14px 18px; display: flex; gap: 14px; align-items: baseline; border-bottom: 1px solid var(--line); }
+.shipped li:last-child { border-bottom: 0; }
+.shipped .v { font: 700 13px/1 var(--mono); color: var(--accent); flex: none; width: 46px; }
+.shipped .what { color: var(--muted); font-size: 15px; min-width: 0; }
+@media (max-width: 860px) { .tk-hero, .tiers, .honest { grid-template-columns: 1fr; } .tk-facts { grid-template-columns: 1fr 1fr; } .tk-state { margin-left: 0; } }
+@media (max-width: 480px) { .tk-panel { padding: 18px; } .tk-address { flex-direction: column; align-items: stretch; } .tk-facts { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -319,6 +397,7 @@ footer a { color: var(--muted); }
     <a class="brand" href="#top" aria-label="Hatchr home"><svg aria-hidden="true"><use href="#egg"/></svg>Hatchr</a>
     <nav class="top" aria-label="Sections">
       <a href="#tour">Tour</a>
+      <a class="coin-link" href="#token">$HATCHR</a>
       <a href="#tools">Everything inside</a>
       <a href="#services">Services</a>
       <a href="#costs">Costs</a>
@@ -346,6 +425,7 @@ footer a { color: var(--muted); }
         <a class="btn ghost" href="#tour">Take the tour</a>
       </div>
       <div class="assure"><span>Free extension, free tools</span><span>Starts paused, in test mode</span><span>Keys stay in your browser</span></div>
+      <a class="coin-chip" href="#token"><span class="mini-coin"><svg aria-hidden="true"><use href="#egg"/></svg></span><span><b>$HATCHR</b> holder perks: badge, gold theme, feature votes →</span></a>
     </div>
     <div class="stage">
       <div class="phone"><img src="img/feed.jpg" width="640" height="1152" alt="Hatchr side panel: the feed with a post from a K9 unit already named K9 Neo, ticker NEO, score 9 out of 10, ready to launch"></div>
@@ -363,6 +443,7 @@ footer a { color: var(--muted); }
       <span><b>$FROGGY</b> sold <span class="dn">−0.0057 SOL</span></span>
       <span><b>creator rewards</b> <span class="up">+0.0412 SOL to claim</span></span>
       <span><b>PEPE…</b> vanity wallet <span class="up">found in 41s</span></span>
+      <span><b class="gold">$HATCHR</b> holder <span class="up">gold theme unlocked</span></span>
       <span><b>$NEO</b> K9 Neo <span class="up">launched 4s after the post</span></span>
       <span><b>$NUCLEAR</b> sold <span class="up">+0.0339 SOL</span></span>
       <span><b>$SHANE</b> Fat Shane <span class="up">rides "fat ___"</span></span>
@@ -370,6 +451,7 @@ footer a { color: var(--muted); }
       <span><b>$FROGGY</b> sold <span class="dn">−0.0057 SOL</span></span>
       <span><b>creator rewards</b> <span class="up">+0.0412 SOL to claim</span></span>
       <span><b>PEPE…</b> vanity wallet <span class="up">found in 41s</span></span>
+      <span><b class="gold">$HATCHR</b> holder <span class="up">gold theme unlocked</span></span>
     </div>
   </div>
 
@@ -383,7 +465,7 @@ footer a { color: var(--muted); }
   </section>
 
   <section class="wide" id="video" aria-labelledby="video-h">
-    <div class="head"><h2 id="video-h">See it in 30 seconds</h2><p>A post breaks, the coin is ready, one click launches it.</p></div>
+    <div class="head"><h2 id="video-h">See it in 36 seconds</h2><p>A post breaks, the coin is ready, one click launches it.</p></div>
     <div class="promo">
       <video id="promoVid" muted loop playsinline preload="none" poster="img/promo-poster.jpg" aria-label="Hatchr promo video">
         <source src="img/hatchr-promo.mp4" type="video/mp4">
@@ -420,6 +502,124 @@ footer a { color: var(--muted); }
       <div class="tour-copy" id="tourCopy"></div>
       <div class="phone"><img id="tourImg" src="img/feed.jpg" width="640" height="1152" alt=""></div>
     </div>
+  </section>
+
+
+  <section class="wide token" id="token" aria-labelledby="token-h">
+    <div class="head"><span class="eyebrow">$HATCHR · Solana · pump.fun</span><h2 id="token-h">The coin Hatchr <em>hatched for itself</em></h2><p>$HATCHR is made the way every Hatchr coin is made: launched on pump.fun, straight from the extension. Keep it in your Hatchr wallet and the extension unlocks holder perks.</p></div>
+
+    <div class="tk-hero">
+      <div class="tk-panel">
+        <div class="tk-id">
+          <span class="big-coin"><svg aria-hidden="true"><use href="#egg"/></svg></span>
+          <div><h3>Hatchr</h3><span class="tick">$HATCHR</span></div>
+          <span class="tk-state" id="tkState">Not launched yet</span>
+        </div>
+        <dl class="tk-facts">
+          <div><dt>Network</dt><dd>Solana</dd></div>
+          <div><dt>Launched on</dt><dd>pump.fun</dd></div>
+          <div><dt>Supply</dt><dd>1,000,000,000</dd></div>
+        </dl>
+        <div class="tk-address">
+          <div><span class="lab">Official address</span><span id="tkAddr"><span class="none">Shown here the moment the coin is live.</span></span></div>
+          <button class="tk-copy" id="tkCopy" type="button" hidden>Copy</button>
+        </div>
+        <p class="tk-warn" id="tkWarn"><b>There is no $HATCHR yet.</b> Any coin using this name today is not ours. The real address will only ever appear here and inside the extension.</p>
+        <div class="cta">
+          <a class="btn gold" id="tkBuy" href="#token" aria-disabled="true">Open on pump.fun</a>
+          <a class="btn ghost" href="#token-how">How the perks work</a>
+        </div>
+      </div>
+      <div class="tk-stage">
+        <div class="phone"><img src="img/token-gold.jpg" width="640" height="1152" loading="lazy" alt="The $HATCHR page in the Hatchr side panel for a Gold holder: 2,400,000 $HATCHR held, Gold tier, all perks unlocked and the gold theme switched on"></div>
+        <div class="float"><img src="img/pnl-gold.jpg" width="1200" height="630" loading="lazy" alt="A gold PnL share card with a $HATCHR GOLD badge"></div>
+      </div>
+    </div>
+
+    <h3 class="tk-sub">Two tiers, six perks</h3>
+    <p>Everything here is extra. Hatchr itself stays free, and nothing that is free today gets locked.</p>
+    <div class="tiers">
+      <div class="tier">
+        <span class="name">Holder</span>
+        <div class="need">100,000 <small>$HATCHR</small></div>
+        <div class="share">0.01% of the supply</div>
+        <ul>
+          <li>Holder badge on PnL cards<span>Every card you share on X shows you hold $HATCHR.</span></li>
+          <li>Gold theme<span>A gold look for the whole side panel.</span></li>
+          <li>Feature votes<span>Pick what gets built next, inside the extension. The first vote opens after launch.</span></li>
+          <li>Early access<span>New features reach holders first.</span></li>
+        </ul>
+      </div>
+      <div class="tier gold">
+        <span class="name">Gold</span>
+        <div class="need">1,000,000 <small>$HATCHR</small></div>
+        <div class="share">0.1% of the supply</div>
+        <ul>
+          <li>Everything in Holder</li>
+          <li>Gold PnL card<span>A gold share card that stands out in a timeline.</span></li>
+          <li>Double vote<span>Your feature vote counts twice.</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <h3 class="tk-sub" id="token-how">How the perks switch on</h3>
+    <p>No wallet connecting, no signing, no account. Needs Hatchr 3.5.0 or newer.</p>
+    <div class="steps">
+      <div class="step"><span class="n">1 · GET</span><h3>Get $HATCHR</h3><p>On pump.fun, using only the official address shown on this page. Copycat coins with the same name don't count.</p></div>
+      <div class="step"><span class="n">2 · HOLD</span><h3>Keep it in your Hatchr wallet</h3><p>Send it to the wallet you use in Hatchr. That address is under Settings → Account.</p></div>
+      <div class="step"><span class="n">3 · UNLOCK</span><h3>Hatchr sees it</h3><p>The extension looks up the wallet's $HATCHR balance and switches your tier on. Sell or move the coins and the tier goes with them.</p></div>
+    </div>
+
+    <h3 class="tk-sub">What it is, and what it isn't</h3>
+    <p>Read this before you buy any.</p>
+    <div class="honest">
+      <div><h4>What $HATCHR is</h4><ul>
+        <li>A key to extras inside Hatchr: badge, gold theme, votes, early access.</li>
+        <li>A way to have a say in what gets built next.</li>
+        <li>A memecoin on pump.fun, launched with Hatchr itself.</li>
+      </ul></div>
+      <div class="no"><h4>What it isn't</h4><ul>
+        <li>Not an investment and not a share in Hatchr or its income.</li>
+        <li>No promise of profit. Like any memecoin, its price can fall to zero.</li>
+        <li>Not needed to use Hatchr. The extension is free without it.</li>
+      </ul></div>
+    </div>
+
+    <h3 class="tk-sub">Open book</h3>
+    <p>Published on launch day, and kept up to date here.</p>
+    <dl class="open-book">
+      <div><dt>Launch</dt><dd><b>Fair launch on pump.fun.</b> No presale and no private round. Everyone buys from the same curve.</dd></div>
+      <div><dt>Team wallet</dt><dd id="tkDev"><b>Published at launch,</b> with the amount bought and the price paid.</dd></div>
+      <div><dt>Creator rewards</dt><dd><b>Pay for Hatchr's development</b> and running costs. They are not paid out to holders.</dd></div>
+      <div><dt>Tier amounts</dt><dd><b>Can change</b> as the price moves, so the tiers stay reachable. Changes are announced here first.</dd></div>
+    </dl>
+
+    <h3 class="tk-sub">Judge it by what ships</h3>
+    <p>The last releases, straight from the changelog.</p>
+    <ul class="shipped">
+      <li><span class="v">3.4.2</span><span class="what">PnL cards post to X with the picture attached, smoother first-run screen, clearer toolbar icon.</span></li>
+      <li><span class="v">3.4.1</span><span class="what">Lighter, faster side panel and one-click desktop download from the header.</span></li>
+      <li><span class="v">3.4.0</span><span class="what">Desktop app with its own window, wide layout and installer.</span></li>
+    </ul>
+    <script>
+    (() => {
+      // LAUNCH DAY: paste the coin's address between the quotes. Everything in this section switches to "live".
+      const MINT = "";
+      const DEV_WALLET = "";
+      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(MINT)) return;
+      const $ = (id) => document.getElementById(id);
+      $("tkState").textContent = "Live on pump.fun"; $("tkState").classList.add("live");
+      $("tkAddr").innerHTML = ""; const code = document.createElement("code"); code.textContent = MINT; $("tkAddr").append(code);
+      $("tkWarn").innerHTML = "<b>Only this address is the real $HATCHR.</b> Any other coin with the same name is a copy.";
+      const buy = $("tkBuy"); buy.href = "https://pump.fun/coin/" + MINT; buy.target = "_blank"; buy.rel = "noopener"; buy.removeAttribute("aria-disabled");
+      const copy = $("tkCopy"); copy.hidden = false;
+      copy.addEventListener("click", () => {
+        navigator.clipboard.writeText(MINT).then(() => { copy.textContent = "Copied"; setTimeout(() => (copy.textContent = "Copy"), 1600); })
+          .catch(() => { const r = document.createRange(); r.selectNodeContents(code); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); });
+      });
+      if (DEV_WALLET) { const d = $("tkDev"); d.textContent = ""; const b = document.createElement("b"); b.textContent = DEV_WALLET; b.style.wordBreak = "break-all"; d.append(b); }
+    })();
+    </script>
   </section>
 
   <section class="wide" id="tools" aria-labelledby="tools-h">
@@ -585,6 +785,9 @@ footer a { color: var(--muted); }
     <div class="head"><h2 id="faq-h">Questions</h2></div>
     <div class="faq">
       <details><summary>Is Hatchr free?</summary><div><p>Yes. The extension is free and so are the services it needs. You pay for launches on Solana (about 0.025 SOL each plus your dev buy), and PumpPortal takes a small fee on trades it builds. Paid AI providers are optional.</p></div></details>
+      <details><summary>Do I need $HATCHR to use Hatchr?</summary><div><p>No. The extension and the desktop app are free, and every feature that is free today stays free. $HATCHR only adds extras: a holder badge, a gold theme, feature votes and early access.</p></div></details>
+      <details><summary>How does Hatchr know I hold $HATCHR?</summary><div><p>It looks up how much $HATCHR is in the wallet you use in Hatchr, the same way it reads your SOL balance. Nothing is connected, signed or sent, and the developer never sees your wallet.</p></div></details>
+      <details><summary>Is $HATCHR an investment?</summary><div><p>No. It unlocks perks inside Hatchr and nothing else. It gives no share in the project or its income, there is no promise of profit, and like any memecoin its price can fall to zero. Only buy what you're fine losing.</p></div></details>
       <details><summary>Can it spend my money by accident?</summary><div><p>It's built not to. It starts paused and in test mode, also after every Chrome restart. Auto mode has hourly, daily and SOL-per-day limits and stops below a minimum balance. LIVE pulses red whenever real SOL can be used.</p></div></details>
       <details><summary>Do I need Chrome?</summary><div><p>The extension works in Chrome and other Chromium browsers like Brave and Edge. If you'd rather not use a browser, there's a <a href="#desktop">desktop app</a> for Windows, Mac and Linux with the same features.</p></div></details>
       <details><summary>Do I need Axiom?</summary><div><p>No, but it's the fastest source. You can use X tabs and Telegram channels instead, and the pump.fun live stream keeps the meta working without Axiom.</p></div></details>
@@ -631,7 +834,7 @@ footer a { color: var(--muted); }
 
   <section class="read legal" id="privacy" aria-labelledby="privacy-h">
     <div class="head"><h2 id="privacy-h">Privacy policy</h2></div>
-    <p class="updated">Effective 8 November 2026 · Hatchr 3.3</p>
+    <p class="updated">Effective 10 November 2026 · Hatchr 3.5</p>
     <div class="callout">
       <p><strong>The short version:</strong> Hatchr has no servers and collects nothing. Your settings, API keys and wallet keys stay in your own browser. Transactions are signed on your device. The only data that leaves your browser goes directly to the services you set up yourself, so they can do their part of the job.</p>
     </div>
@@ -661,6 +864,7 @@ footer a { color: var(--muted); }
           <tr><td>Pinata (IPFS)</td><td>The coin image and metadata, including the link to the source post</td><td>Coin images must be public. Anything uploaded to IPFS is public and permanent.</td></tr>
           <tr><td>Your AI provider</td><td>The text of a post, its context, and a short summary of current coin names</td><td>Suggests a name, ticker and score. Optional.</td></tr>
           <tr><td>Cloudflare Workers AI or OpenAI</td><td>An image description; frames from a video post for picking the best one</td><td>Generates or chooses the coin picture. Optional.</td></tr>
+          <tr><td>hatchr.pro</td><td>Only a request for a small public file with the official $HATCHR address and the tier amounts; nothing about you</td><td>Tells the extension which coin is the real $HATCHR. Your $HATCHR balance itself is read through your Solana RPC.</td></tr>
           <tr><td>CoinGecko</td><td>Only a request for the SOL price</td><td>Shows amounts in USD, EUR or GBP. Optional.</td></tr>
           <tr><td>X, Axiom, Telegram and their media servers</td><td>Normal page and media requests from your browser</td><td>Reads the posts you follow and their media</td></tr>
           <tr><td>Trading sites (Axiom, pump.fun, GMGN, BullX, Padre, DEX Screener)</td><td>Nothing, until you open a coin there in a new tab</td><td>Opens the coin's page</td></tr>
@@ -671,7 +875,7 @@ footer a { color: var(--muted); }
     <h3>What Hatchr does not do</h3>
     <ul>
       <li>No analytics, tracking, advertising or telemetry.</li>
-      <li>No developer servers, accounts or sign-ups.</li>
+      <li>No accounts or sign-ups, and no developer server that receives your data. The one thing Hatchr fetches from hatchr.pro is the public coin file listed above.</li>
       <li>Your data is never sold or shared, and is never used for anything except the features above.</li>
       <li>No browsing history is collected. Hatchr reads only x.com, axiom.trade and the public Telegram channels you list.</li>
       <li>Vanity wallets and PnL are worked out in your browser. Nothing about them is sent anywhere.</li>
@@ -713,7 +917,7 @@ footer a { color: var(--muted); }
 
   <footer class="wide">
     <span>Hatchr is an independent tool and is not affiliated with X, pump.fun, Axiom, PumpPortal or Solana. © 2026 Hatchr</span>
-    <nav aria-label="Footer"><a href="#privacy">Privacy</a><a href="#support">Support</a><a href="#faq">FAQ</a><a href="#desktop">Desktop app</a><a href="#top">Back to top</a></nav>
+    <nav aria-label="Footer"><a href="#token">$HATCHR</a><a href="#privacy">Privacy</a><a href="#support">Support</a><a href="#faq">FAQ</a><a href="#desktop">Desktop app</a><a href="#top">Back to top</a></nav>
   </footer>
 
   <div class="dlmodal" id="dlModal" hidden>
