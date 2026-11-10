@@ -585,3 +585,16 @@ body.gold .top { border-bottom-color: rgba(var(--gold-rgb), .28); }
 .tier-dot { width: 11px; height: 11px; flex: none; align-self: flex-end; margin: 0 0 1px -15px; border-radius: 50%; border: 2px solid var(--bg); background: var(--green); z-index: 1; cursor: pointer; }
 .tier-dot.gold { background: linear-gradient(135deg, #f9dc8c, #d9a233); box-shadow: 0 0 0 1px rgba(var(--gold-rgb), .5); }
 .top:not(.no-tier) .tier-dot { display: none; }
+
+/* header that is short on room: tighter spacing first, slightly smaller controls second (see fitHeader) */
+.top.snug { padding-left: 8px; padding-right: 8px; gap: 4px; }
+.top.snug .brand { gap: 5px; }
+.top.snug .controls { gap: 4px; }
+.top.snug .seg { padding: 2px; }
+.top.snug .seg button { padding: 4px 8px; }
+.top.snug .chip { padding: 4px 8px; }
+.top.snug .pause-chip, .top.snug .mode-chip { gap: 4px; }
+.top.snug2 .controls { font-size: 12px; }
+.top.snug2 .seg button { padding: 4px 7px; }
+.top.snug2 .logo-img { width: 27px; height: 27px; }
+.top.snug2 .wordmark { font-size: 15px; }
