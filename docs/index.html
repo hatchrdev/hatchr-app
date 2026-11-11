@@ -65,6 +65,8 @@ p code, li code, td code { background: var(--accent-soft); padding: 1px 6px; bor
   background: var(--warn-soft); border-bottom: 1px solid rgba(251,191,36,.3); color: var(--fg); text-wrap: balance; }
 .official b { color: var(--warn); }
 .official a { color: var(--fg); font-weight: 700; }
+.official.live { background: var(--gold-soft); border-bottom-color: var(--gold-line); }
+.official.live b { color: var(--gold); }
 .tk-x { font: 700 16px/1.3 var(--mono); color: var(--gold); text-decoration: none; }
 .tk-x:hover { text-decoration: underline; }
 .tk-address .xnote { color: var(--muted); font-size: 14px; }
@@ -632,7 +634,9 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
       $("tkState").textContent = "Live on pump.fun"; $("tkState").classList.add("live");
       $("tkAddr").innerHTML = ""; const code = document.createElement("code"); code.textContent = MINT; $("tkAddr").append(code);
       $("tkWarn").innerHTML = "<b>Only this address is the real $HATCHR.</b> Any other coin with the same name is a copy, even if it links to this website.";
-      $("offCoin").innerHTML = '$HATCHR is live. The only real address is <a href="#token">on this page</a>.';
+      // the strip at the top turns from a warning into the launch announcement
+      const bar = $("offBar"); bar.classList.add("live");
+      bar.innerHTML = '<b>$HATCHR is officially live on pump.fun.</b> The only real address is <a href="#token">on this page</a>, and our only X account is <a href="https://x.com/hatchrpro" target="_blank" rel="noopener">@hatchrpro</a>. Anything else is fake.';
       const buy = $("tkBuy"); buy.href = "https://pump.fun/coin/" + MINT; buy.target = "_blank"; buy.rel = "noopener"; buy.removeAttribute("aria-disabled");
       const copy = $("tkCopy"); copy.hidden = false;
       copy.addEventListener("click", () => {
