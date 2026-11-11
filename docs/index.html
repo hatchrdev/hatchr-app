@@ -17,6 +17,8 @@
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@hatchrpro">
+<link rel="me" href="https://x.com/hatchrpro">
 <meta name="twitter:title" content="Hatchr – Memecoin Launcher">
 <meta name="twitter:description" content="Hatchr is a Chrome extension that turns breaking posts into pump.fun memecoins: AI names that follow the meta, test mode, one-click or auto launch, PnL and creator rewards.">
 <meta name="twitter:image" content="https://hatchr.pro/og.jpg">
@@ -56,6 +58,16 @@ p code, li code, td code { background: var(--accent-soft); padding: 1px 6px; bor
 
 .wide { max-width: 1120px; margin: 0 auto; }
 .read { max-width: 720px; margin: 0 auto; }
+
+/* what is official: a strip above the header, because fake accounts and coins link to this site to look real */
+.official { margin-left: calc(-1 * max(16px, env(safe-area-inset-left, 0px))); margin-right: calc(-1 * max(16px, env(safe-area-inset-right, 0px)));
+  padding: 9px max(16px, env(safe-area-inset-left, 0px)) 9px max(16px, env(safe-area-inset-right, 0px)); text-align: center; font-size: 14px; line-height: 1.45;
+  background: var(--warn-soft); border-bottom: 1px solid rgba(251,191,36,.3); color: var(--fg); text-wrap: balance; }
+.official b { color: var(--warn); }
+.official a { color: var(--fg); font-weight: 700; }
+.tk-x { font: 700 16px/1.3 var(--mono); color: var(--gold); text-decoration: none; }
+.tk-x:hover { text-decoration: underline; }
+.tk-address .xnote { color: var(--muted); font-size: 14px; }
 
 /* header */
 header.site {
@@ -396,6 +408,8 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
   </defs>
 </svg>
 
+<div class="official" id="offBar" role="note"><b>Beware of fakes.</b> Our only X account is <a href="https://x.com/hatchrpro" target="_blank" rel="noopener">@hatchrpro</a>. <span id="offCoin">$HATCHR is not launched yet: any coin using the name today is not ours, even if it links to this site.</span></div>
+
 <header class="site">
   <div class="wide bar">
     <a class="brand" href="#top" aria-label="Hatchr home"><svg aria-hidden="true"><use href="#egg"/></svg>Hatchr</a>
@@ -528,7 +542,10 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
           <div><span class="lab">Official address</span><span id="tkAddr"><span class="none">Shown here the moment the coin is live.</span></span></div>
           <button class="tk-copy" id="tkCopy" type="button" hidden>Copy</button>
         </div>
-        <p class="tk-warn" id="tkWarn"><b>There is no $HATCHR yet.</b> Any coin using this name today is not ours. The real address will only ever appear here and inside the extension.</p>
+        <div class="tk-address">
+          <div><span class="lab">Official X account</span><a class="tk-x" href="https://x.com/hatchrpro" target="_blank" rel="noopener">@hatchrpro</a> <span class="xnote">· the only one. Launch news comes from there and from this page.</span></div>
+        </div>
+        <p class="tk-warn" id="tkWarn"><b>There is no $HATCHR yet.</b> Any coin using this name today is not ours, even if it links to this website. The real address will only ever appear here, inside the extension and on <a href="https://x.com/hatchrpro" target="_blank" rel="noopener">@hatchrpro</a>.</p>
         <div class="cta">
           <a class="btn gold" id="tkBuy" href="#token" aria-disabled="true">Open on pump.fun</a>
           <a class="btn ghost" href="#token-how">How the perks work</a>
@@ -614,7 +631,8 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
       const $ = (id) => document.getElementById(id);
       $("tkState").textContent = "Live on pump.fun"; $("tkState").classList.add("live");
       $("tkAddr").innerHTML = ""; const code = document.createElement("code"); code.textContent = MINT; $("tkAddr").append(code);
-      $("tkWarn").innerHTML = "<b>Only this address is the real $HATCHR.</b> Any other coin with the same name is a copy.";
+      $("tkWarn").innerHTML = "<b>Only this address is the real $HATCHR.</b> Any other coin with the same name is a copy, even if it links to this website.";
+      $("offCoin").innerHTML = '$HATCHR is live. The only real address is <a href="#token">on this page</a>.';
       const buy = $("tkBuy"); buy.href = "https://pump.fun/coin/" + MINT; buy.target = "_blank"; buy.rel = "noopener"; buy.removeAttribute("aria-disabled");
       const copy = $("tkCopy"); copy.hidden = false;
       copy.addEventListener("click", () => {
@@ -792,6 +810,7 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
       <details><summary>Do I need $HATCHR to use Hatchr?</summary><div><p>No. The extension and the desktop app are free, and every feature that is free today stays free. $HATCHR only adds extras: a holder badge, a gold theme, feature votes and early access.</p></div></details>
       <details><summary>How does Hatchr know I hold $HATCHR?</summary><div><p>It looks up how much $HATCHR is in the wallet you use in Hatchr, the same way it reads your SOL balance. Nothing is connected, signed or sent, and the developer never sees your wallet.</p></div></details>
       <details><summary>Is $HATCHR an investment?</summary><div><p>No. It unlocks perks inside Hatchr and nothing else. It gives no share in the project or its income, there is no promise of profit, and like any memecoin its price can fall to zero. Only buy what you're fine losing.</p></div></details>
+      <details><summary>Which Hatchr accounts and coins are real?</summary><div><p>Only this website and <a href="https://x.com/hatchrpro" target="_blank" rel="noopener">@hatchrpro</a> on X speak for Hatchr. The real $HATCHR address is shown in the <a href="#token">$HATCHR section</a> of this page and inside the extension. A coin or an account that links to hatchr.pro proves nothing: anyone can paste a link. Hatchr will never message you first to ask for money, a wallet connection or a private key.</p></div></details>
       <details><summary>Can it spend my money by accident?</summary><div><p>It's built not to. It starts paused and in test mode, also after every Chrome restart. Auto mode has hourly, daily and SOL-per-day limits and stops below a minimum balance. LIVE pulses red whenever real SOL can be used.</p></div></details>
       <details><summary>Do I need Chrome?</summary><div><p>The extension works in Chrome and other Chromium browsers like Brave and Edge. If you'd rather not use a browser, there's a <a href="#desktop">desktop app</a> for Windows, Mac and Linux with the same features.</p></div></details>
       <details><summary>Do I need Axiom?</summary><div><p>No, but it's the fastest source. You can use X tabs and Telegram channels instead, and the pump.fun live stream keeps the meta working without Axiom.</p></div></details>
@@ -900,6 +919,7 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
     <p class="updated">Hatchr 3.3</p>
     <p>Most problems come down to a missing key or a blocked service. Start with <strong>Settings → Test setup</strong>: it checks your wallet, RPC, Pinata, AI and a simulated launch, and shows exactly which one fails. Every key also has an ⓘ guide.</p>
     <p>Still stuck? Write to us through the <strong>Support</strong> tab on Hatchr's Chrome Web Store page, and include the error text shown on the card.</p>
+    <p>News and updates are on X at <a href="https://x.com/hatchrpro" target="_blank" rel="noopener">@hatchrpro</a>. It is our only X account: anyone else using the Hatchr name is not us.</p>
     <div class="faq">
       <details><summary>"RPC blocked" or "RPC blocked the request (403)"</summary><div><p>The free public Solana RPC refuses browser extensions. Create a free account at helius.dev, copy your Mainnet RPC URL and paste it in <strong>Settings → Launch → Solana RPC URL</strong>, then click Save settings. Hovering the red "RPC blocked" in Hatchr shows these steps too.</p></div></details>
       <details><summary>Auto skipped: "No Pinata JWT set"</summary><div><p>Coin images and metadata are stored on IPFS through Pinata. Create a free account at pinata.cloud, go to API Keys → New Key, and copy the <strong>JWT</strong> (the long value starting with <code>eyJ</code>) into <strong>Settings → Launch → Pinata JWT</strong>.</p></div></details>
@@ -921,7 +941,7 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
 
   <footer class="wide">
     <span>Hatchr is an independent tool and is not affiliated with X, pump.fun, Axiom, PumpPortal or Solana. © 2026 Hatchr</span>
-    <nav aria-label="Footer"><a href="#token">$HATCHR</a><a href="#privacy">Privacy</a><a href="#support">Support</a><a href="#faq">FAQ</a><a href="#desktop">Desktop app</a><a href="#top">Back to top</a></nav>
+    <nav aria-label="Footer"><a href="https://x.com/hatchrpro" target="_blank" rel="noopener">X: @hatchrpro</a><a href="#token">$HATCHR</a><a href="#privacy">Privacy</a><a href="#support">Support</a><a href="#faq">FAQ</a><a href="#desktop">Desktop app</a><a href="#top">Back to top</a></nav>
   </footer>
 
   <div class="dlmodal" id="dlModal" hidden>
