@@ -1,7 +1,7 @@
 {
   "name": "hatchr-desktop",
   "productName": "Hatchr",
-  "version": "3.5.2",
+  "version": "3.5.5",
   "description": "Hatchr desktop app: breaking posts to pump.fun memecoins",
   "main": "main.js",
   "desktopName": "hatchr-desktop.desktop",
@@ -16,20 +16,19 @@
     "dist:linux": "node sync.mjs && electron-builder --linux"
   },
   "devDependencies": {
-    "electron": "44.9.3",
+    "electron": "44.11.3",
     "electron-builder": "26.17.0",
     "electron-builder-squirrel-windows": "26.17.0"
   },
   "build": {
     "appId": "com.hatchr.desktop",
     "productName": "Hatchr",
-    "copyright": "\u00a9 2026 Hatchr",
+    "copyright": "© 2026 Hatchr",
     "files": [
       "main.js",
       "chrome-api.js",
       "preload-app.js",
       "preload-site.js",
-      "selftest.js",
       "ui/**/*",
       "app/**/*",
       "package.json"

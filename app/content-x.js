@@ -138,9 +138,13 @@
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
 
-  // Click X's "Show N posts" pill so new posts actually enter the page.
+  // Click X's "Show N posts" pill so new posts actually enter the page, but only while the page is at the top.
+  // X answers that click by jumping to the top of the timeline, so clicking it while someone has scrolled down
+  // to read threw them back up every few seconds. Once the page is back at the top, loading resumes.
+  const atTop = () => (window.scrollY || document.documentElement.scrollTop || 0) < 200;
   setInterval(() => {
     if (!enabled || !autoLoadNew || !alive) return;
+    if (!atTop()) return;
     const pill = document.querySelector('[data-testid="pillLabel"]');
     if (pill) { (pill.closest('[role="button"]') || pill).click(); return; }
     for (const el of document.querySelectorAll('[role="button"], button')) {

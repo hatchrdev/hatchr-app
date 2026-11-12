@@ -6,6 +6,7 @@ const dst = new URL("./app/", import.meta.url);
 if (!existsSync(src)) throw new Error("Build the extension first (tweet2coin: node build.mjs)");
 rmSync(dst, { recursive: true, force: true });
 mkdirSync(dst, { recursive: true });
-cpSync(src, dst, { recursive: true, filter: (p) => !p.includes("/source") && !p.endsWith("README.md") });
+// p uses backslashes on Windows, so compare path parts, not the text
+cpSync(src, dst, { recursive: true, filter: (p) => !p.split(/[\\/]/).includes("source") && !p.endsWith("README.md") });
 writeFileSync(new URL("./background.html", dst), '<!doctype html><meta charset="utf-8"><title>Hatchr engine</title><script src="background.js"></script>\n');
 console.log("synced extension into app/");

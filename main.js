@@ -3,7 +3,7 @@
 // - a hidden "engine" window runs background.js, a hidden helper runs offscreen.html
 // - the panel window shows sidepanel.html
 // - Axiom / X open in "site" windows with the extension's content scripts injected
-const { app, BrowserWindow, ipcMain, protocol, net, shell, Tray, Menu, Notification, nativeImage, screen } = require("electron");
+const { app, BrowserWindow, ipcMain, protocol, net, shell, Tray, Menu, Notification, nativeImage, screen, dialog } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
@@ -41,52 +41,170 @@ app.userAgentFallback = app.userAgentFallback.replace(/ Electron\/\S+/, "").repl
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
 
 // ---------------- storage (chrome.storage.local) ----------------
+// One file holds everything, the wallet key included, so it is never replaced by something worse:
+// - a file that exists but can't be read (antivirus, a backup tool) stops the start instead of starting empty;
+// - a damaged file is kept under another name and the last good copy (.bak) is used;
+// - every save is written to a temp file, flushed to disk and renamed over the old one.
 let storeFile;
 let store = {};
 let saveTimer = null;
+let dirty = false;
+let saveFails = 0;
+let lastBak = 0;
+const BUSY = new Set(["EPERM", "EACCES", "EBUSY"]);
+const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+/** Runs fn, trying again after each pause in `waits` while another program holds the file. */
+function whileBusy(fn, waits) {
+  for (let i = 0; ; i++) {
+    try { return fn(); } catch (e) {
+      if (!BUSY.has(e.code) || i >= waits.length) throw e;
+      sleepSync(waits[i]);
+    }
+  }
+}
+const PATIENT = [25, 60, 120, 250, 500, 800];
+const parseStore = (txt) => {
+  const v = JSON.parse(txt);
+  if (!v || typeof v !== "object" || Array.isArray(v)) throw new Error("not a settings object");
+  return v;
+};
+/** The newest good data among the leftovers of an interrupted save (.tmp) and the last good copy (.bak). */
+function recoverStore(newerThan = 0) {
+  for (const f of [storeFile + ".tmp", storeFile + ".bak"]) {
+    try {
+      if (f.endsWith(".tmp") && fs.statSync(f).mtimeMs <= newerThan) continue; // an old leftover, the main file is newer
+      return parseStore(whileBusy(() => fs.readFileSync(f, "utf8"), PATIENT));
+    } catch { /* try the next one */ }
+  }
+  return null;
+}
+/** false = the data file exists but can't be read right now; the caller must not go on (and never save over it). */
 function loadStore() {
   storeFile = path.join(app.getPath("userData"), "storage.json");
-  try { store = JSON.parse(fs.readFileSync(storeFile, "utf8")); } catch { store = {}; }
+  let txt, mtime = 0;
+  try {
+    txt = whileBusy(() => fs.readFileSync(storeFile, "utf8"), PATIENT);
+    mtime = fs.statSync(storeFile).mtimeMs;
+  } catch (e) {
+    if (e.code !== "ENOENT") {
+      dialog.showErrorBox("Hatchr can't read its data file", `Another program is holding this file:\n${storeFile}\n(${e.code || e.message})\n\nNothing was changed. Close backup or antivirus scans that may be using it and start Hatchr again.`);
+      return false;
+    }
+  }
+  if (txt === undefined) { store = recoverStore() || {}; return true; } // first start, or the main file went missing
+  try { store = parseStore(txt); } catch {
+    try { fs.renameSync(storeFile, `${storeFile}.corrupt-${Date.now()}`); } catch { /* it stays where it is; the next save replaces it */ }
+    store = recoverStore() || {};
+    return true;
+  }
+  // a save that was written but could not be moved into place last time is newer than the main file
+  try { if (fs.statSync(storeFile + ".tmp").mtimeMs > mtime) store = recoverStore(mtime) || store; } catch { /* no leftover */ }
+  try { fs.copyFileSync(storeFile, storeFile + ".bak"); lastBak = Date.now(); } catch { /* best effort */ }
+  return true;
 }
-function saveStore() {
+function writeStore(waits) {
+  const tmp = storeFile + ".tmp";
+  const fd = fs.openSync(tmp, "w");
+  try { fs.writeSync(fd, JSON.stringify(store)); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+  // the file being replaced is a complete earlier save: keep it as the fallback copy now and then
+  if (Date.now() - lastBak > 60_000) { try { fs.copyFileSync(storeFile, storeFile + ".bak"); lastBak = Date.now(); } catch { /* none yet, or busy */ } }
+  whileBusy(() => fs.renameSync(tmp, storeFile), waits);
+  dirty = false;
+  saveFails = 0;
+}
+function saveSoon(ms) {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    const tmp = storeFile + ".tmp";
-    fs.writeFileSync(tmp, JSON.stringify(store));
-    fs.renameSync(tmp, storeFile);
-  }, 250);
+    try { writeStore([15, 40, 80]); } catch (e) {
+      // another program has the file open: the change stays in memory (and in the temp file) and is tried again
+      saveFails++;
+      if (saveFails === 1 || saveFails % 20 === 0) console.error("[hatchr] could not save yet:", e.code || e.message);
+      saveSoon(Math.min(5000, 400 * saveFails));
+    }
+  }, ms);
 }
+function saveStore() { dirty = true; saveSoon(250); }
 function flushStore() {
-  if (!storeFile) return;
+  if (!storeFile || !dirty) return;
   clearTimeout(saveTimer);
-  try { fs.writeFileSync(storeFile, JSON.stringify(store)); } catch {}
+  try { writeStore(PATIENT); } catch (e) { console.error("[hatchr] could not save on exit:", e.code || e.message); }
 }
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
-function broadcast(channel, ...args) {
-  for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(channel, ...args);
-}
-ipcMain.handle("storage:get", (_e, keys) => {
+// Who is asking. Hatchr's own pages (panel, engine, helper) get everything. Axiom and X windows run other people's
+// pages next to our page scripts, so they only get what those scripts need: never the wallet, the keys or the app controls.
+const isApp = (e) => {
+  const w = BrowserWindow.fromWebContents(e.sender);
+  return !!w && [engineWin, helperWin, panelWin].includes(w) && String(e.senderFrame?.url || "").startsWith(ORIGIN + "/");
+};
+const SITE_KEYS = new Set(["settings", "xShare"]);
+const SECRET_FIELD = /(key|jwt|token|secret|password)$|^rpcUrl$/i;
+const forSite = (k, v) => {
+  if (k !== "settings" || !v || typeof v !== "object") return v;
   const out = {};
+  for (const [f, val] of Object.entries(v)) if (!SECRET_FIELD.test(f)) out[f] = val;
+  return out;
+};
+const siteView = (obj) => {
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) if (SITE_KEYS.has(k)) out[k] = forSite(k, v);
+  return out;
+};
+const SITE_MESSAGES = new Set(["hello", "post", "pulse", "axiomStatus"]);
+const appOnly = (fn, fallback) => (e, ...a) => (isApp(e) ? fn(e, ...a) : fallback);
+function broadcastChanges(changes) {
+  if (!Object.keys(changes).length) return;
+  const site = {};
+  for (const [k, c] of Object.entries(changes)) {
+    if (!SITE_KEYS.has(k)) continue;
+    site[k] = {};
+    if ("oldValue" in c) site[k].oldValue = forSite(k, c.oldValue);
+    if ("newValue" in c) site[k].newValue = forSite(k, c.newValue);
+  }
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (w.isDestroyed()) continue;
+    if ([engineWin, helperWin, panelWin].includes(w)) w.webContents.send("storage:changed", changes, "local");
+    else if (w !== splashWin && Object.keys(site).length) w.webContents.send("storage:changed", site, "local");
+  }
+}
+ipcMain.handle("storage:get", (e, keys) => {
+  const out = {};
+  if (!isApp(e)) {
+    const all = siteView(store);
+    if (keys == null) return clone(all);
+    if (typeof keys === "string") keys = [keys];
+    if (Array.isArray(keys)) { for (const k of keys) if (k in all) out[k] = clone(all[k]); return out; }
+    for (const [k, def] of Object.entries(keys)) out[k] = k in all ? clone(all[k]) : def;
+    return out;
+  }
   if (keys == null) return clone(store);
   if (typeof keys === "string") keys = [keys];
   if (Array.isArray(keys)) { for (const k of keys) if (k in store) out[k] = clone(store[k]); return out; }
   for (const [k, def] of Object.entries(keys)) out[k] = k in store ? clone(store[k]) : def;
   return out;
 });
-ipcMain.handle("storage:set", (_e, items) => {
+ipcMain.handle("storage:set", (e, items) => {
+  if (!isApp(e)) return; // page scripts only read
   const changes = {};
   for (const [k, v] of Object.entries(items || {})) {
-    changes[k] = { oldValue: store[k], newValue: v };
+    // like Chrome: a value that did not change is not reported, and a new key has no oldValue
+    if (k in store && JSON.stringify(store[k]) === JSON.stringify(v)) continue;
+    changes[k] = k in store ? { oldValue: store[k], newValue: v } : { newValue: v };
     store[k] = v;
   }
+  if (!Object.keys(changes).length) return;
   saveStore();
-  broadcast("storage:changed", changes, "local");
+  broadcastChanges(changes);
 });
-ipcMain.handle("storage:remove", (_e, keys) => {
+ipcMain.handle("storage:remove", (e, keys) => {
+  const app_ = isApp(e);
   const changes = {};
-  for (const k of [].concat(keys)) if (k in store) { changes[k] = { oldValue: store[k] }; delete store[k]; }
+  for (const k of [].concat(keys)) {
+    if (!app_ && k !== "xShare") continue; // the X page script clears the share it just used, nothing else
+    if (k in store) { changes[k] = { oldValue: store[k] }; delete store[k]; }
+  }
+  if (!Object.keys(changes).length) return;
   saveStore();
-  broadcast("storage:changed", changes, "local");
+  broadcastChanges(changes);
 });
 
 // ---------------- messages (chrome.runtime.sendMessage) ----------------
@@ -95,8 +213,9 @@ let msgSeq = 0;
 const internalWindows = () => [engineWin, helperWin, panelWin].filter((w) => w && !w.isDestroyed());
 ipcMain.handle("rt:send", (e, msg) => {
   const from = BrowserWindow.fromWebContents(e.sender);
-  const site = siteWindows.has(from?.id);
-  const sender = site ? { tab: { id: from.id, url: e.sender.getURL() }, url: e.sender.getURL() } : { id: "hatchr", url: e.sender.getURL() };
+  const site = !isApp(e);
+  if (site && !SITE_MESSAGES.has(msg && msg.type)) return { error: "Could not establish connection. Receiving end does not exist." };
+  const sender = site ? { tab: { id: from ? from.id : -1, url: e.sender.getURL() }, url: e.sender.getURL() } : { id: "hatchr", url: e.sender.getURL() };
   const targets = internalWindows().filter((w) => w.webContents !== e.sender);
   if (!targets.length) return { error: "Could not establish connection. Receiving end does not exist." };
   const id = ++msgSeq;
@@ -104,13 +223,14 @@ ipcMain.handle("rt:send", (e, msg) => {
     const state = { left: targets.length, listeners: 0, done: false, resolve };
     pending.set(id, state);
     for (const w of targets) w.webContents.send("rt:deliver", id, msg, sender);
-    setTimeout(() => finish(id, { error: "Message timed out" }), 5 * 60_000);
+    state.timer = setTimeout(() => finish(id, { error: "Message timed out" }), 5 * 60_000);
   });
 });
 function finish(id, result) {
   const st = pending.get(id);
   if (!st || st.done) return;
   st.done = true;
+  clearTimeout(st.timer);
   pending.delete(id);
   st.resolve(result);
 }
@@ -138,19 +258,38 @@ const appPrefs = (extra = {}) => ({
   ...extra,
 });
 
+// Hatchr's own windows only ever show Hatchr's own pages: anything else would inherit their access to the wallet.
+function stayHome(win) {
+  const guard = (e, url) => { if (!String(url).startsWith(ORIGIN + "/")) e.preventDefault(); };
+  win.webContents.on("will-navigate", guard);
+  win.webContents.on("will-redirect", guard);
+  win.webContents.on("will-attach-webview", (e) => e.preventDefault());
+}
+// links leave the app only as ordinary web or mail links, never as a file or another program's link type
+function openOutside(url) {
+  try { if (/^(https?|mailto):$/.test(new URL(url).protocol)) return shell.openExternal(url); } catch { /* not a link */ }
+}
+
 function createEngine() {
   engineWin = new BrowserWindow({ show: false, webPreferences: appPrefs() });
-  engineWin.loadURL(`${ORIGIN}/background.html`);
-  engineWin.on("closed", () => { engineWin = null; if (!quitting) setTimeout(createEngine, 1000); });
+  const win = engineWin;
+  stayHome(win);
+  win.loadURL(`${ORIGIN}/background.html`);
+  // if the engine's page crashes, close it: "closed" then starts a fresh one, so auto mode doesn't stop silently
+  win.webContents.on("render-process-gone", () => { if (!quitting && !win.isDestroyed()) win.destroy(); });
+  win.on("closed", () => { if (engineWin === win) engineWin = null; if (!quitting) setTimeout(() => { if (!engineWin) createEngine(); }, 1000); });
 }
 
 function createHelper(url) {
   if (helperWin && !helperWin.isDestroyed()) return;
   helperWin = new BrowserWindow({ show: false, webPreferences: appPrefs({ autoplayPolicy: "no-user-gesture-required" }) });
-  helperWin.loadURL(`${ORIGIN}/${String(url || "offscreen.html").replace(/^\//, "")}`);
-  helperWin.on("closed", () => { helperWin = null; });
+  const win = helperWin;
+  stayHome(win);
+  win.loadURL(`${ORIGIN}/${String(url || "offscreen.html").replace(/^\//, "")}`);
+  win.webContents.on("render-process-gone", () => { if (!win.isDestroyed()) win.destroy(); }); // made again when it is next needed
+  win.on("closed", () => { if (helperWin === win) helperWin = null; });
 }
-ipcMain.handle("offscreen:create", (_e, url) => createHelper(url));
+ipcMain.handle("offscreen:create", appOnly((_e, url) => createHelper(url)));
 ipcMain.handle("offscreen:exists", () => !!(helperWin && !helperWin.isDestroyed()));
 
 // The start-up splash: the egg hatching, while the app loads behind it
@@ -178,7 +317,8 @@ function savedBounds() {
   if (!b || !(b.width > 300 && b.height > 300)) return null;
   const area = screen.getDisplayMatching(b).workArea;
   const visible = b.x < area.x + area.width - 80 && b.x + b.width > area.x + 80 && b.y >= area.y - 10 && b.y < area.y + area.height - 80;
-  return visible ? b : { width: Math.min(b.width, area.width), height: Math.min(b.height, area.height) };
+  const fit = { width: Math.min(b.width, area.width), height: Math.min(b.height, area.height) };
+  return visible ? { ...b, ...fit } : fit;
 }
 function rememberBounds() {
   if (!panelWin || panelWin.isDestroyed() || panelWin.isMinimized() || panelWin.isFullScreen()) return;
@@ -195,7 +335,10 @@ function createPanel({ showWhenReady = true, splashAt = 0 } = {}) {
     frame: isMac, titleBarStyle: isMac ? "hiddenInset" : "default", trafficLightPosition: { x: 14, y: 13 },
     webPreferences: appPrefs(),
   });
+  stayHome(panelWin);
   panelWin.loadURL(`${ORIGIN}/sidepanel.html`);
+  panelWin.webContents.on("render-process-gone", () => { if (!quitting && panelWin && !panelWin.isDestroyed()) panelWin.webContents.reload(); });
+  panelWin.on("session-end", flushStore); // Windows shutting down or logging off
   panelWin.once("ready-to-show", () => {
     if (!showWhenReady) return;
     // let the egg finish hatching, then swap to the app
@@ -216,7 +359,7 @@ function createPanel({ showWhenReady = true, splashAt = 0 } = {}) {
 // title bar buttons in the panel
 ipcMain.on("win:control", (e, action) => {
   const w = BrowserWindow.fromWebContents(e.sender);
-  if (!w) return;
+  if (!w || !isApp(e)) return;
   if (action === "min") w.minimize();
   else if (action === "max") w.isMaximized() ? w.unmaximize() : w.maximize();
   else if (action === "close") w.close();
@@ -242,7 +385,7 @@ function createSite(url, { active = true, pinned = false } = {}) {
     let host = "";
     try { host = new URL(u).hostname; } catch {}
     if (SITE_HOSTS.test(host)) return { action: "allow" }; // sign-in popups etc. stay in the app
-    shell.openExternal(u);
+    openOutside(u);
     return { action: "deny" };
   });
   win.on("closed", () => siteWindows.delete(win.id));
@@ -252,8 +395,8 @@ function openUrl(url, active = true, pinned = false) {
   let u;
   try { u = new URL(url); } catch { return null; }
   if (u.protocol === "chrome:") return null;
-  if (SITE_HOSTS.test(u.hostname)) return createSite(url, { active, pinned });
-  shell.openExternal(url);
+  if (/^https:$/.test(u.protocol) && SITE_HOSTS.test(u.hostname)) return createSite(url, { active, pinned });
+  openOutside(url);
   return null;
 }
 function openSite(url) {
@@ -265,11 +408,11 @@ function openSite(url) {
   }
   createSite(url);
 }
-ipcMain.handle("desktop:open", (_e, what) => {
+ipcMain.handle("desktop:open", appOnly((_e, what) => {
   if (what === "axiom") openSite("https://axiom.trade/pulse");
   else if (what === "x") openSite("https://x.com/home");
   else if (what === "quit") { quitting = true; app.quit(); }
-});
+}));
 
 // ---------------- tabs ----------------
 const matchUrl = (url, patterns) => [].concat(patterns || []).some((p) => new RegExp("^" + p.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$").test(url));
@@ -280,39 +423,41 @@ ipcMain.handle("tabs:query", (_e, q = {}) => {
     active: focused === win, pinned, discarded: false, status: win.webContents.isLoading() ? "loading" : "complete",
   })).filter((t) => !q.url || matchUrl(t.url, q.url));
 });
-ipcMain.handle("tabs:create", (_e, o = {}) => {
+ipcMain.handle("tabs:create", appOnly((_e, o = {}) => {
   const w = openUrl(o.url, o.active !== false, !!o.pinned);
   return w ? { id: w.id, url: o.url, active: o.active !== false } : { id: -1, url: o.url };
-});
-ipcMain.handle("tabs:reload", (_e, id) => { const s = siteWindows.get(id); if (s && !s.win.isDestroyed()) s.win.webContents.reload(); });
+}, { id: -1 }));
+ipcMain.handle("tabs:reload", appOnly((_e, id) => { const s = siteWindows.get(id); if (s && !s.win.isDestroyed()) s.win.webContents.reload(); }));
 ipcMain.handle("tabs:update", () => {});
 
 // ---------------- notifications, badge, startup info ----------------
-ipcMain.handle("notify", (_e, title, body) => {
+ipcMain.handle("notify", appOnly((_e, title, body) => {
   if (!Notification.isSupported()) return;
   const n = new Notification({ title, body, icon: icon() });
   n.on("click", showPanel);
   n.show();
-});
+}));
 // the extension's toolbar tooltip ("Hatchr · paused" …) becomes the window title and tray tooltip
-ipcMain.handle("title", (_e, title) => {
+ipcMain.handle("title", appOnly((_e, title) => {
   const t = String(title || "Hatchr");
   if (tray) tray.setToolTip(t);
   if (panelWin && !panelWin.isDestroyed()) panelWin.setTitle(t);
-});
+}));
 let launchInfo = null;
-ipcMain.handle("launch-info", () => {
+ipcMain.handle("launch-info", appOnly(() => {
   if (launchInfo) return { reason: null };
   const last = store.__desktopVersion;
   launchInfo = last == null ? "install" : last !== app.getVersion() ? "update" : null;
   store.__desktopVersion = app.getVersion();
   saveStore();
   return { reason: launchInfo };
-});
+}, { reason: null }));
 ipcMain.on("manifest", (e) => {
   try { e.returnValue = JSON.parse(fs.readFileSync(path.join(APP_DIR, "manifest.json"), "utf8")); } catch { e.returnValue = { version: app.getVersion() }; }
 });
 ipcMain.on("content-script", (e, name) => {
+  // only the extension's own page scripts, by plain file name: no paths
+  if (!/^content-[\w-]+\.js$/.test(String(name))) { e.returnValue = ""; return; }
   try { e.returnValue = fs.readFileSync(path.join(APP_DIR, name), "utf8"); } catch { e.returnValue = ""; }
 });
 
@@ -325,14 +470,16 @@ function createTray() {
     { label: "Open Axiom", click: () => openSite("https://axiom.trade/pulse") },
     { label: "Open X", click: () => openSite("https://x.com/home") },
     { type: "separator" },
-    { label: `Hatchr ${app.getVersion()} · get the latest`, click: () => shell.openExternal("https://hatchr.pro/#desktop") },
+    { label: `Hatchr ${app.getVersion()} · get the latest`, click: () => openOutside("https://hatchr.pro/#desktop") },
     { type: "separator" },
     { label: "Quit Hatchr", click: () => { quitting = true; app.quit(); } },
   ]));
   tray.on("click", showPanel);
 }
 
-if (process.env.HATCHR_SELFTEST) {
+// the self-test is a developer tool: it never runs in an installed copy
+const SELFTEST = !app.isPackaged && process.env.HATCHR_SELFTEST;
+if (SELFTEST) {
   app.on("web-contents-created", (_e, wc) => {
     wc.on("console-message", (ev) => console.log(`[${(wc.getURL() || "").split("/").pop()}]`, ev.level || "", ev.message));
     wc.on("preload-error", (_ev, p, err) => console.log("[preload-error]", p, err));
@@ -346,13 +493,14 @@ app.on("activate", showPanel);
 
 app.whenReady().then(() => {
   // Show the hatching splash first thing, before the heavier setup, so it appears instantly.
-  const splashAt = process.env.HATCHR_SELFTEST ? 0 : createSplash();
-  loadStore();
+  const splashAt = SELFTEST ? 0 : createSplash();
+  if (!loadStore()) { storeFile = null; app.exit(1); return; } // unreadable data file: stop, and never write over it
   if (store.__desktopVersion == null) store.onboardSeen = true; // the Chrome-only "keep Axiom running" tip doesn't apply here
   protocol.handle("app", (req) => {
-    const { pathname } = new URL(req.url);
-    const file = path.normalize(path.join(APP_DIR, decodeURIComponent(pathname)));
-    if (!file.startsWith(APP_DIR)) return new Response("Not found", { status: 404 });
+    let file;
+    try { file = path.normalize(path.join(APP_DIR, decodeURIComponent(new URL(req.url).pathname))); } catch { return new Response("Not found", { status: 404 }); }
+    const rel = path.relative(APP_DIR, file);
+    if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) return new Response("Not found", { status: 404 });
     return net.fetch(pathToFileURL(file).toString());
   });
   // macOS needs the app and Edit menus for Cmd+Q and copy/paste; Windows and Linux need none
@@ -362,7 +510,7 @@ app.whenReady().then(() => {
   createTray();
   createEngine();
   createPanel({ splashAt });
-  if (process.env.HATCHR_SELFTEST) return require("./selftest.js")(() => panelWin);
+  if (SELFTEST) return require("./selftest.js")(() => panelWin);
   // first run: open Axiom so you can log in
   if (!store.__desktopAxiomOpened) {
     store.__desktopAxiomOpened = true;
