@@ -3,11 +3,80 @@
   "use strict";
   const ENDPOINT = "https://frontend-api-v3.pump.fun/callout/create";
   const ORIGINS = ["https://pump.fun/*", "https://frontend-api-v3.pump.fun/*"];
+  const PUMP_PAGE = "https://pump.fun/robots.txt"; // the lightest page on pump.fun: only its address matters
   const inFlight = new Map();
   const mintPattern = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
   const idPattern = /^[a-zA-Z0-9_-]{1,128}$/;
   const unknown = () => ({ sent: false, reason: "unknown" });
   const storageKey = mint => `hatchr.callout.${mint}`;
+
+  // Runs inside a pump.fun page, not in Hatchr. Pump.fun's API answers only requests that come from its own site
+  // (anyone else gets "Not allowed by CORS"), so the callout has to leave from a pump.fun tab, exactly as it does when
+  // you post one there yourself. Chrome copies this one function into the page, so it can use nothing from this file.
+  async function pagePost(endpoint, payload) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20000);
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        credentials: "include",
+        redirect: "error",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          "x-pump-platform": "web",
+          "x-pump-source": "WEB"
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      let body = null;
+      try { body = await response.json(); } catch { /* A non-JSON success is unconfirmed. */ }
+      return { status: response.status, body };
+    } catch {
+      return { lost: true }; // timeout, redirect or dropped connection: it may or may not have arrived
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  const onPump = url => typeof url === "string" && url.startsWith("https://pump.fun/");
+  const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+  // A pump.fun tab to send from: one you already have open, or a small one opened in the background for the moment.
+  async function pumpTab() {
+    const open = (await chrome.tabs.query({ url: "https://pump.fun/*" })).find(tab => !tab.discarded && onPump(tab.url));
+    if (open) return { id: open.id, opened: false };
+    const tab = await chrome.tabs.create({ url: PUMP_PAGE, active: false });
+    for (let i = 0; i < 60; i++) { // up to 15 s until the tab really is on pump.fun
+      const now = await chrome.tabs.get(tab.id).catch(() => null);
+      if (!now) break; // closed by the user
+      if (onPump(now.url)) return { id: tab.id, opened: true };
+      await pause(250);
+    }
+    chrome.tabs.remove(tab.id).catch(() => {});
+    throw new Error("pump.fun did not open");
+  }
+
+  // { status, body } from pump.fun, { lost } when the answer never came, { notSent } when nothing could be sent at all.
+  async function postFromPumpPage(payload) {
+    let tab;
+    try { tab = await pumpTab(); } catch { return { notSent: true }; }
+    try {
+      let frames, timer;
+      try {
+        const running = chrome.scripting.executeScript({ target: { tabId: tab.id }, world: "MAIN", func: pagePost, args: [ENDPOINT, payload] });
+        const tooLong = new Promise(resolve => { timer = setTimeout(() => resolve("timeout"), 45000); });
+        frames = await Promise.race([running, tooLong]);
+      } catch { return { notSent: true }; } // Chrome refused to run it in that tab: nothing left Hatchr
+      finally { clearTimeout(timer); }
+      const reply = frames === "timeout" ? null : frames?.[0]?.result;
+      if (!reply || reply.lost || typeof reply.status !== "number") return { lost: true };
+      return { status: reply.status, body: reply.body ?? null };
+    } finally {
+      if (tab.opened) chrome.tabs.remove(tab.id).catch(() => {});
+    }
+  }
 
   function confirmedCallout(body, mint) {
     // Pump.fun's reply is not documented, so the callout and its id are accepted under the names such replies usually use
@@ -57,41 +126,26 @@
     if ((prior?.state === "pending" || prior?.state === "unknown") && !input.checkedNotPosted) return unknown();
 
     await chrome.storage.session.set({ [key]: { state: "pending", fingerprint: hash } });
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20000);
     let result;
     try {
       const payload = { coinMint: mint, thesis: text, chainId: 1399811149, version: 2 };
-      let status, body = null;
+      let reply;
       if (chrome.hatchrCallouts?.post) {
         // Electron's main process uses the same cookie session as its Pump.fun
         // login window. Never copy cookies from Chrome or expose them over IPC.
-        ({ status, body } = await chrome.hatchrCallouts.post(payload));
+        reply = await chrome.hatchrCallouts.post(payload);
       } else {
-        const response = await fetch(ENDPOINT, {
-          method: "POST",
-          credentials: "include",
-          redirect: "error",
-          headers: {
-            accept: "application/json",
-            "content-type": "application/json",
-            "x-pump-platform": "web",
-            "x-pump-source": "WEB"
-          },
-          body: JSON.stringify(payload),
-          signal: controller.signal
-        });
-        status = response.status;
-        try { body = await response.json(); } catch { /* A non-JSON success is unconfirmed. */ }
+        reply = await postFromPumpPage(payload);
       }
-      if (status >= 200 && status < 300) result = confirmedCallout(body, mint) || unknown();
+      const { status, body = null } = reply || {};
+      if (reply?.notSent) result = { sent: false, reason: "no-pump-page" };
+      else if (typeof status !== "number") result = unknown();
+      else if (status >= 200 && status < 300) result = confirmedCallout(body, mint) || unknown();
       else if (status >= 500 || status === 408) result = unknown();
       else result = rejection(status, body);
     } catch {
       // Do not replay a POST after a timeout, redirect, or dropped connection.
       result = unknown();
-    } finally {
-      clearTimeout(timer);
     }
 
     // Retain the pending marker if storage fails; never turn a successful POST

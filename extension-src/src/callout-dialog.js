@@ -91,6 +91,7 @@
         "cannot-call": "Pump.fun requires an eligible wallet holding this coin on your signed-in account.",
         "rate-limited": "Pump.fun is limiting callouts right now. Wait before trying again.",
         "forbidden": "Pump.fun refused access. Check your login or any verification on pump.fun, then return here.",
+        "no-pump-page": "Couldn't reach pump.fun to send the callout. Open pump.fun in a tab, check that you are signed in, and send again. Nothing was posted.",
         "unknown": "Could not confirm whether the callout was posted. Check pump.fun before sending again to avoid a duplicate.",
         "in-progress": "A callout for this coin is already sending. Wait before trying again.",
         "refused": "Pump.fun refused the callout."

@@ -121,10 +121,15 @@ function makeEnv() {
     tabs: {
       list: [], created: [], reloaded: [], updated: [],
       async query() { return chrome.tabs.list; },
-      async create(o) { chrome.tabs.created.push(o); return { id: 99 }; },
+      async create(o) { chrome.tabs.created.push(o); return { id: 99, url: o.url }; },
+      async get(id) { const made = chrome.tabs.created.at(-1); return chrome.tabs.list.find((x) => x.id === id) || { id, url: made?.url }; },
+      removed: [],
+      async remove(id) { chrome.tabs.removed.push(id); },
       async reload(id) { chrome.tabs.reloaded.push(id); },
       async update(id, o) { chrome.tabs.updated.push([id, o]); },
     },
+    // runs the function "in the tab": here simply in the test process, where fetch is the fake network
+    scripting: { ran: [], async executeScript({ target, world, func, args }) { chrome.scripting.ran.push({ tabId: target.tabId, world }); return [{ result: await func(...args) }]; } },
     action: { async setBadgeText() {}, async setBadgeBackgroundColor() {}, async setTitle() {}, async setIcon() {} },
     sidePanel: { async setPanelBehavior() {} },
     notifications: { create() {} },
@@ -1691,7 +1696,7 @@ console.log("Callouts (pump.fun)");
     assert.equal(r.data.by, "built-in");
     assert.ok(r.data.texts.length >= 2 && r.data.texts[0].includes("$BISCUIT"));
   });
-  await t("callout, send: goes straight to pump.fun with the browser's own login, once, and the coin is marked as called", async () => {
+  await t("callout, send: leaves from a pump.fun tab with the browser's own login, once, and the coin is marked as called", async () => {
     net.callouts = []; net.calloutReply = null;
     const { env, msg } = await boot(baseSettings({ mode: "manual" }));
     env.store.deploys = [held()];
@@ -1699,7 +1704,11 @@ console.log("Callouts (pump.fun)");
     assert.ok(r.ok && r.data.sent, JSON.stringify(r));
     assert.equal(r.data.url, `https://pump.fun/callouts/${MINT}/be6b78ef-67c2-4c2c-aabe-93173ac63a0a`);
     assert.deepEqual(net.callouts, [{ body: { coinMint: MINT, thesis: "Holding $BISCUIT.", chainId: 1399811149, version: 2 }, credentials: "include" }]);
-    assert.equal(env.chrome.tabs.created.length, 0, "no pump.fun tab is opened");
+    // pump.fun's API only answers its own site, so the request is made inside a pump.fun tab: none was open,
+    // so one is opened in the background and closed again
+    assert.deepEqual(env.chrome.tabs.created.map((x) => [x.url.startsWith("https://pump.fun/"), x.active]), [[true, false]]);
+    assert.deepEqual(env.chrome.scripting.ran, [{ tabId: 99, world: "MAIN" }]);
+    assert.deepEqual(env.chrome.tabs.removed, [99], "the tab Hatchr opened is closed afterwards");
     assert.ok(env.store.deploys[0].calledAt > 0 && env.store.deploys[0].calloutUrl === r.data.url, "the coin remembers its callout");
     assert.ok(!JSON.stringify(env.store).includes("auth_token"), "nothing about the login is stored");
     const again = await msg({ type: "calloutCreate", id: "d1", mint: MINT, text: "Holding $BISCUIT." });

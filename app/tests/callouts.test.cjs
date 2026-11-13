@@ -10,8 +10,9 @@ const INPUT = { id: 'launch-1', mint: MINT, text: 'My own callout text' };
 const source = fs.readFileSync([path.join(__dirname, '../callout-client.js'), path.join(__dirname, '../../src/callout-client.js')].find(p => fs.existsSync(p)), 'utf8');
 const success = () => new Response(JSON.stringify({ callout: { calloutId: ID, coinMint: MINT } }), { status: 201 });
 
-function harness({ response = success, permission = true, storageFailure = false, historyFailure = false, timeout = false } = {}) {
+function harness({ response = success, permission = true, storageFailure = false, historyFailure = false, timeout = false, tabs = [], injectFailure = false } = {}) {
   const session = {};
+  const created = [], removed = [], injected = [];
   const requests = [];
   const records = [];
   const deploys = [{ id: INPUT.id, mint: MINT, ok: true, dryRun: false }];
@@ -20,6 +21,18 @@ function harness({ response = success, permission = true, storageFailure = false
     setTimeout: timeout ? fn => setTimeout(fn, 1) : setTimeout, clearTimeout,
     fetch: async (url, options) => { requests.push({ url, options }); return response(url, options); },
     chrome: {
+      // The request is made inside a pump.fun tab: an open one, or a background tab opened and closed for it.
+      tabs: {
+        query: async () => tabs,
+        create: async options => { created.push(options); return { id: 7, url: options.url }; },
+        get: async id => ({ id, url: created.at(-1)?.url }),
+        remove: async id => { removed.push(id); }
+      },
+      scripting: { executeScript: async ({ target, world, func, args }) => {
+        injected.push({ tabId: target.tabId, world });
+        if (injectFailure) throw new Error('Cannot access contents of the page');
+        return [{ result: await func(...args) }];
+      } },
       permissions: { contains: async ({ origins }) => {
         assert.deepEqual(Array.from(origins), ['https://pump.fun/*', 'https://frontend-api-v3.pump.fun/*']);
         return permission;
@@ -36,7 +49,7 @@ function harness({ response = success, permission = true, storageFailure = false
   });
   vm.runInContext(source, context);
   const save = async (id, record) => { if (historyFailure) throw new Error('History unavailable'); records.push({ id, record }); };
-  return { context, requests, records, session, deploys, create: input => context.HatchrCallouts.create(input || INPUT, save) };
+  return { context, requests, records, session, deploys, created, removed, injected, create: input => context.HatchrCallouts.create(input || INPUT, save) };
 }
 
 test('posts the replay payload with browser credentials and records the confirmed URL', async () => {
@@ -181,4 +194,31 @@ test('desktop uses the fixed IPC transport instead of a renderer request', async
   assert.equal(result.sent, true);
   assert.equal(h.requests.length, 0);
   assert.deepEqual(posted, [{ coinMint: MINT, thesis: INPUT.text, chainId: 1399811149, version: 2 }]);
+});
+
+test('sends from inside a pump.fun tab: an open one is used as is, otherwise a background tab is opened and closed again', async () => {
+  let h = harness({ tabs: [{ id: 3, url: 'https://pump.fun/board', discarded: false }] });
+  let result = await h.create();
+  assert.equal(result.sent, true);
+  assert.deepEqual(h.injected, [{ tabId: 3, world: 'MAIN' }]);
+  assert.equal(h.created.length, 0, 'no extra tab when pump.fun is already open');
+  assert.equal(h.removed.length, 0, 'your own tab is never closed');
+
+  h = harness({ tabs: [{ id: 4, url: 'https://pump.fun/board', discarded: true }] });
+  result = await h.create();
+  assert.equal(result.sent, true);
+  assert.equal(h.created.length, 1);
+  assert.equal(h.created[0].active, false, 'the tab opens in the background');
+  assert.match(h.created[0].url, /^https:\/\/pump\.fun\//);
+  assert.deepEqual(h.injected, [{ tabId: 7, world: 'MAIN' }]);
+  assert.deepEqual(h.removed, [7], 'the tab Hatchr opened is closed afterwards');
+});
+
+test('when Chrome cannot run in the pump.fun tab nothing is sent, and it can be tried again right away', async () => {
+  const h = harness({ injectFailure: true });
+  const result = await h.create();
+  assert.deepEqual({ sent: result.sent, reason: result.reason }, { sent: false, reason: 'no-pump-page' });
+  assert.equal(h.requests.length, 0);
+  assert.deepEqual(h.removed, [7]);
+  assert.equal(Object.keys(h.session).length, 0, 'no "maybe posted" marker is left behind');
 });

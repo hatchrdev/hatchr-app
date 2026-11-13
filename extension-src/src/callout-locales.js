@@ -1,6 +1,7 @@
 /* Additional composer strings; existing Hatchr translations remain in sidepanel.js. */
 globalThis.HatchrCalloutLocales = {
   nl: {
+    "Couldn't reach pump.fun to send the callout. Open pump.fun in a tab, check that you are signed in, and send again. Nothing was posted.": "Kon pump.fun niet bereiken om de callout te versturen. Open pump.fun in een tabblad, controleer of je bent ingelogd en verstuur opnieuw. Er is niets geplaatst.",
     "I checked pump.fun: this callout was not posted.": "Ik heb pump.fun gecontroleerd: deze callout is niet geplaatst.",
     "Posts directly from Hatchr using the account signed in on pump.fun in this Chrome profile. Pump.fun's holding requirements still apply.": "Plaatst rechtstreeks vanuit Hatchr via het account waarmee je in dit Chrome-profiel op pump.fun bent ingelogd. De vereisten van pump.fun voor je muntbezit blijven gelden.",
     "Allow access to pump.fun to send a callout from Hatchr.": "Sta toegang tot pump.fun toe om een callout vanuit Hatchr te versturen.",
@@ -16,6 +17,7 @@ globalThis.HatchrCalloutLocales = {
     "Posted successfully, but Hatchr could not update the launch history.": "Geplaatst, maar Hatchr kon de lanceergeschiedenis niet bijwerken."
   },
   de: {
+    "Couldn't reach pump.fun to send the callout. Open pump.fun in a tab, check that you are signed in, and send again. Nothing was posted.": "pump.fun war nicht erreichbar, um den Callout zu senden. Öffne pump.fun in einem Tab, prüfe, ob du angemeldet bist, und sende erneut. Es wurde nichts veröffentlicht.",
     "I checked pump.fun: this callout was not posted.": "Ich habe pump.fun geprüft: Dieser Callout wurde nicht veröffentlicht.",
     "Posts directly from Hatchr using the account signed in on pump.fun in this Chrome profile. Pump.fun's holding requirements still apply.": "Veröffentlicht direkt aus Hatchr über das in diesem Chrome-Profil bei pump.fun angemeldete Konto. Die Anforderungen von pump.fun an deinen Coin-Bestand gelten weiterhin.",
     "Allow access to pump.fun to send a callout from Hatchr.": "Erlaube den Zugriff auf pump.fun, um einen Callout aus Hatchr zu senden.",
@@ -31,6 +33,7 @@ globalThis.HatchrCalloutLocales = {
     "Posted successfully, but Hatchr could not update the launch history.": "Erfolgreich veröffentlicht, aber Hatchr konnte den Launch-Verlauf nicht aktualisieren."
   },
   es: {
+    "Couldn't reach pump.fun to send the callout. Open pump.fun in a tab, check that you are signed in, and send again. Nothing was posted.": "No se pudo acceder a pump.fun para enviar el callout. Abre pump.fun en una pestaña, comprueba que has iniciado sesión y envía de nuevo. No se publicó nada.",
     "I checked pump.fun: this callout was not posted.": "He comprobado pump.fun: este callout no se ha publicado.",
     "Posts directly from Hatchr using the account signed in on pump.fun in this Chrome profile. Pump.fun's holding requirements still apply.": "Publica directamente desde Hatchr con la cuenta que tiene la sesión abierta en pump.fun en este perfil de Chrome. Los requisitos de tenencia de pump.fun siguen vigentes.",
     "Allow access to pump.fun to send a callout from Hatchr.": "Permite el acceso a pump.fun para enviar un callout desde Hatchr.",
