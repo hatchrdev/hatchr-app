@@ -42,8 +42,9 @@
 
   async function submit(input, saveRecord) {
     const { id, mint, text } = input;
-    const { deploys = [] } = await chrome.storage.local.get("deploys");
-    const coin = deploys.find(item => item.id === id);
+    // A coin launched in Hatchr, or one of the coins the wallet holds (the "Other coins you hold" list).
+    const { deploys = [], heldCoins = [] } = await chrome.storage.local.get(["deploys", "heldCoins"]);
+    const coin = deploys.find(item => item.id === id) || heldCoins.find(item => item.id === id);
     if (!coin || coin.mint !== mint || coin.dryRun || !coin.ok) throw new Error("Choose a successfully launched live coin.");
     if (!await chrome.permissions.contains({ origins: ORIGINS })) return { sent: false, reason: "no-permission" };
 

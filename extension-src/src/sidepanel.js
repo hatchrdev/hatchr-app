@@ -20,6 +20,8 @@ const store = {
 let settings = { ...DEFAULTS };
 let feed = [];
 let deploys = [];
+let heldCoins = [];
+let heldInfo = null;
 let walletPub = null;
 let walletSol = null;
 let walletArchive = [];
@@ -217,14 +219,14 @@ $$("#modeSeg button").forEach((b) =>
     const mode = b.dataset.mode;
     if (mode === settings.mode) return;
     if (mode === "auto" && !settings.dryRun &&
-      !confirm(t("Auto mode is LIVE: posts that pass your rules will be launched with real SOL (max {h}/hour, {d}/day, {sol} SOL/day). Continue?", { h: settings.autoMaxPerHour, d: settings.autoMaxPerDay, sol: settings.autoMaxSolPerDay }))) return;
+      !(await ask(t("Auto mode is LIVE: posts that pass your rules will be launched with real SOL (max {h}/hour, {d}/day, {sol} SOL/day). Continue?", { h: settings.autoMaxPerHour, d: settings.autoMaxPerDay, sol: settings.autoMaxSolPerDay })))) return;
     await setSetting({ mode });
   })
 );
 $("#dryBtn").addEventListener("click", async () => {
-  if (settings.dryRun && !confirm(settings.mode === "auto"
+  if (settings.dryRun && !(await ask(settings.mode === "auto"
     ? t("Go LIVE in auto mode? Matching posts will launch real coins and spend real SOL.")
-    : t("Go LIVE? Launch will create real coins and spend real SOL.")) ) return;
+    : t("Go LIVE? Launch will create real coins and spend real SOL."), t("Go LIVE")))) return;
   await setSetting({ dryRun: !settings.dryRun });
 });
 $("#pauseBtn").addEventListener("click", () => setSetting({ paused: !settings.paused }));
@@ -452,7 +454,7 @@ async function deploy(id) {
       if (!granted) return toast(t("Image host not allowed"));
     } catch { return toast(t("Bad image URL")); }
   }
-  if (!settings.dryRun && settings.confirmManual && !confirm(t("Launch ${ticker} \"{name}\" with a {sol} SOL dev buy?", { ticker: c.ticker, name: c.name, sol: settings.devBuySol }))) return;
+  if (!settings.dryRun && settings.confirmManual && !(await ask(t("Launch ${ticker} \"{name}\" with a {sol} SOL dev buy?", { ticker: c.ticker, name: c.name, sol: settings.devBuySol }), t("Launch")))) return;
   const overrides = {};
   for (const k of ["name", "ticker", "description", "imageChoice", "imageCustom"]) if (edits[id]?.[k] != null) overrides[k] = edits[id][k];
   try {
@@ -639,7 +641,6 @@ function renderRewards() {
     ${r.claimError ? `<div class="rw-meta err">${esc(r.claimError)}</div>` : r.dryClaimOk && settings.dryRun ? `<div class="rw-meta ok">${esc(t("Claim test passed. Nothing was sent."))}</div>` : ""}
     <div class="rw-meta">${esc(t("You earn a cut of every trade on coins you created, until you claim it. One claim collects all your coins."))}</div>`;
   $("#claimBtn")?.addEventListener("click", async () => {
-    if (!settings.dryRun && !confirm(t("Claim {sol} SOL of creator rewards to your wallet?", { sol: fmtSol(unclaimed) }))) return;
     try { await send({ type: "claimRewards" }); refreshBalance(); } catch (e) { toast(e.message, 5000); }
   });
 }
@@ -722,6 +723,34 @@ function renderDeploys() {
   }).join("");
 }
 
+// Questions are asked inside the panel, never with a Chrome dialog. ask() resolves to true (go ahead) or false.
+// It is used only where something can be lost or real money starts moving; harmless actions just happen.
+function ask(text, okLabel) {
+  return new Promise((resolve) => {
+    document.getElementById("askBox")?.remove();
+    const box = document.createElement("div");
+    box.id = "askBox";
+    box.className = "ask";
+    box.innerHTML = `<div class="ask-box" role="alertdialog" aria-modal="true"><p></p><div class="ask-row"><button class="ghost" data-a="no"></button><button data-a="yes"></button></div></div>`;
+    box.querySelector("p").textContent = text;
+    box.querySelector('[data-a="no"]').textContent = t("Cancel");
+    box.querySelector('[data-a="yes"]').textContent = okLabel || t("Continue");
+    const done = (v) => { document.removeEventListener("keydown", onKey, true); box.remove(); resolve(v); };
+    const onKey = (e) => {
+      if (e.key === "Escape") { e.stopPropagation(); done(false); }
+      else if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); done(true); }
+    };
+    box.addEventListener("click", (e) => {
+      const a = e.target.closest("[data-a]");
+      if (a) done(a.dataset.a === "yes");
+      else if (e.target === box) done(false);
+    });
+    document.addEventListener("keydown", onKey, true);
+    document.body.appendChild(box);
+    box.querySelector('[data-a="yes"]').focus();
+  });
+}
+
 function openModal(html) {
   $("#modalBox").innerHTML = `<button class="modal-x" title="${esc(t("Close"))}">×</button>${html}`;
   $("#modal").hidden = false;
@@ -764,9 +793,51 @@ $("#deploys").addEventListener("click", async (e) => {
   if (!d) return;
   if (b.dataset.act === "preview") return previewCoin(d);
   if (b.dataset.act === "callout") return calloutModal(d);
-  if (!d.simulated && !settings.dryRun && settings.confirmSell && !confirm(t("Sell ALL your ${ticker} tokens now?", { ticker: d.ticker }))) return;
+  if (!d.simulated && !settings.dryRun && settings.confirmSell && !(await ask(t("Sell ALL your ${ticker} tokens now?", { ticker: d.ticker }), t("Sell all")))) return;
   b.disabled = true;
   try { await send({ type: "sell", id: d.id }); } catch (err) { toast(err.message, 4000); }
+});
+
+// ---------------- other coins you hold (for callouts) ----------------
+const shortAddr = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : "");
+function renderHeld() {
+  const root = $("#held");
+  if (!root) return;
+  if (settings.dryRun) { root.innerHTML = ""; return; } // a callout is always real, so the list only shows in LIVE mode
+  const scanning = root.dataset.busy === "1";
+  const head = `<div class="feed-head held-head"><span class="muted">${esc(t("Other coins you hold"))}${heldCoins.length ? ` (${heldCoins.length})` : ""}</span><button class="link" id="heldScan" ${scanning ? "disabled" : ""}>${scanning ? `<span class="spin"></span>` : ""}${esc(t("Refresh"))}</button></div>`;
+  let body;
+  if (!heldCoins.length) {
+    const why = heldInfo?.error === "no-wallet" ? t("No wallet yet. Create one under Settings → Account.")
+      : heldInfo?.error ? `${t("Couldn't read the wallet:")} ${heldInfo.error}`
+      : heldInfo ? t("No other pump.fun coins in your wallet.") : t("Press Refresh to look for pump.fun coins in your wallet.");
+    body = `<div class="held-empty muted">${esc(why)} ${esc(t("Do you use another wallet on pump.fun? Add its address under Settings → Launch → Callouts."))}</div>`;
+  } else {
+    body = heldCoins.map((c) => {
+      const thumb = c.image ? `<img class="dep-img" src="${esc(c.image)}" alt="" referrerpolicy="no-referrer"/>` : `<span class="dot"></span>`;
+      const title = c.ticker || c.name ? `$${esc(c.ticker || "?")} <span class="muted">${esc(c.name || "")}</span>` : `<span class="muted">${esc(shortAddr(c.mint))}</span>`;
+      return `<div class="dep">${thumb}<div class="dep-main">
+        <div class="dep-title">${title}</div>
+        <div class="dep-meta hold">${esc(t("Holding {n} tokens", { n: fmtTokens(c.amount) }))}${c.wallet && c.wallet !== walletPub ? ` · ${esc(t("in {wallet}", { wallet: shortAddr(c.wallet) }))}` : ""}</div>
+        ${c.calledAt ? `<div class="dep-meta">${esc(t("Called out {ago}", { ago: agoText(c.calledAt) }))}${c.calloutUrl ? ` · <a target="_blank" href="${esc(c.calloutUrl)}">${esc(t("view"))}</a>` : ""}</div>` : ""}
+        <div class="dep-actions"><a class="mini axiom" target="_blank" href="${esc(coinUrl(settings.openIn, c.mint))}">${esc(t("Open in {site}", { site: platformOf(settings.openIn).label }))}</a><button class="mini call" data-held="${esc(c.id)}">${esc(t("Callout"))}</button></div>
+      </div></div>`;
+    }).join("");
+  }
+  root.innerHTML = head + body;
+}
+async function scanHeld() {
+  const root = $("#held");
+  if (!root || settings.dryRun || root.dataset.busy === "1") return;
+  root.dataset.busy = "1"; renderHeld();
+  try { await send({ type: "scanHeld" }); } catch (err) { toast(err.message, 4000); }
+  root.dataset.busy = ""; renderHeld();
+}
+$("#held").addEventListener("click", (e) => {
+  if (e.target.closest("#heldScan")) return scanHeld();
+  const b = e.target.closest("[data-held]");
+  const c = b && heldCoins.find((x) => x.id === b.dataset.held);
+  if (c) calloutModal(c);
 });
 
 let holdingsTimer = null;
@@ -780,12 +851,13 @@ async function refreshHoldingsNow() {
 function launchedTabShown(on) {
   clearInterval(holdingsTimer);
   if (on) {
+    if (!heldInfo || Date.now() - (heldInfo.at || 0) > 120000) scanHeld();
     refreshHoldings(); refreshRewards();
     holdingsTimer = setInterval(() => { refreshHoldings(); refreshRewards(); }, 30000);
   }
 }
-$("#clearDeps").addEventListener("click", () => {
-  if (confirm(t("Clear the launch log? (Rate limits and daily caps are counted from this log.)"))) send({ type: "clearDeploys" });
+$("#clearDeps").addEventListener("click", async () => {
+  if (await ask(t("Clear the launch log? (Rate limits and daily caps are counted from this log.)"), t("Clear"))) send({ type: "clearDeploys" });
 });
 
 // ---------------- settings ----------------
@@ -845,6 +917,9 @@ const SCHEMA = [
       { k: "autoClaimMinSol", label: "Claim when ≥ (SOL)", type: "number", step: "0.005" },
       { k: "autoClaimEveryMin", label: "Check every (min)", type: "number", step: "10" },
     ] },
+  ] },
+  { sub: "launch", title: "Callouts", fields: [
+    { k: "calloutWallet", label: "Your pump.fun wallet address (optional)", help: "Only if you sign in on pump.fun with a different wallet than the Hatchr wallet. Hatchr then also lists the coins that wallet holds, so you can call them out. It is a public address: Hatchr can only look at it." },
   ] },
   { sub: "launch", title: "Coin details", fields: [
     { k: "descriptionTemplate", label: "Description template", type: "textarea", help: "Placeholders: {text} {ai} {url} {handle} {author} {name} {ticker}" },
@@ -1094,7 +1169,7 @@ async function loadArchiveBalances() {
 }
 
 async function showSecret(pub) {
-  if (!confirm(t("Anyone who sees this key can take everything in the wallet. Show it?"))) return;
+  if (!(await ask(t("Anyone who sees this key can take everything in the wallet. Show it?"), t("Show private key")))) return;
   try {
     const w = await send({ type: "revealWallet", pub });
     const box = pub ? null : $("#walletSecretBox");
@@ -1128,7 +1203,6 @@ function bindWallet() {
     if (msg) toast(msg);
   };
   $("#walletCreate")?.addEventListener("click", async () => {
-    if (walletPub && !confirm(t("Make a new wallet and switch to it? Your current wallet is kept under \"Previous wallets\"."))) return;
     try { await after(await send({ type: "createWallet" }), t("New wallet created. Send it some SOL to launch for real.")); } catch (e) { toast(e.message, 4000); }
   });
   $("#walletSave")?.addEventListener("click", async () => {
@@ -1137,14 +1211,12 @@ function bindWallet() {
     try { await after(await send({ type: "setWallet", secret: v }), t("Wallet imported")); } catch (e) { toast(e.message, 4000); }
   });
   $("#walletRemove")?.addEventListener("click", async () => {
-    if (!confirm(t("Remove this wallet from Hatchr? It stays under \"Previous wallets\" so you can restore it."))) return;
     try { await after(await send({ type: "setWallet", secret: "" }), t("Wallet removed")); } catch (e) { toast(e.message); }
   });
   $("#walletVanity")?.addEventListener("click", () => openVanity(after));
   $("#walletCopy")?.addEventListener("click", () => copyText(walletPub, t("Address copied")));
   $("#walletReveal")?.addEventListener("click", () => showSecret(null));
   $("#walletDownload")?.addEventListener("click", async () => {
-    if (!confirm(t("Download a file with your private key? Keep it somewhere safe and never share it."))) return;
     try {
       const w = await send({ type: "revealWallet" });
       download(`hatchr-wallet-${w.pub.slice(0, 6)}.json`, JSON.stringify({
@@ -1160,7 +1232,6 @@ function bindWallet() {
   $$("[data-wact]").forEach((b) => b.addEventListener("click", async () => {
     const pub = b.dataset.pub;
     if (b.dataset.wact === "reveal") return showSecret(pub);
-    if (!confirm(t("Switch back to this wallet? The current one is kept under \"Previous wallets\"."))) return;
     try { await after(await send({ type: "useArchivedWallet", pub }), t("Switched wallet")); } catch (e) { toast(e.message); }
   }));
 }
@@ -1506,7 +1577,6 @@ function vanityFoundHtml(j) {
 }
 
 async function useVanity() {
-  if (walletPub && !confirm(t("Switch to this vanity wallet? Your current wallet is kept under \"Previous wallets\"."))) return;
   try {
     const pub = await send({ type: "vanityUse" });
     closeModal();
@@ -1552,7 +1622,6 @@ function renderVanityModal() {
     body.innerHTML = vanityFoundHtml(j) + `<button id="vAgain" class="link">${esc(t("Search again"))}</button>`;
     $("#vUse").addEventListener("click", useVanity);
     $("#vDiscard").addEventListener("click", () => {
-      if (!confirm(t("Throw this vanity wallet away? It's empty, so nothing is lost."))) return;
       send({ type: "vanityDiscard" }).catch(() => {});
     });
     $("#vAgain").addEventListener("click", () => { body.dataset.view = "form-forced"; renderVanityForm(body); });
@@ -1593,7 +1662,7 @@ function renderVanityForm(body) {
   cs.addEventListener("change", odds);
   odds();
   $("#vGo").addEventListener("click", async () => {
-    if (vanityJob?.status === "found" && !confirm(t("Start a new search? The vanity wallet you found and didn't use will be thrown away."))) return;
+    if (vanityJob?.status === "found" && !(await ask(t("Start a new search? The vanity wallet you found and didn't use will be thrown away.")))) return;
     $("#vGo").disabled = true;
     body.dataset.view = "";
     try {
@@ -1710,7 +1779,7 @@ function renderSettings() {
   });
   $("#exportBtn").addEventListener("click", async () => {
     const password = $("#backupPw").value;
-    if (!password && !confirm(t("Export WITHOUT a password? Your wallet private key and API keys will be readable by anyone who opens the file."))) return;
+    if (!password && !(await ask(t("Export WITHOUT a password? Your wallet private key and API keys will be readable by anyone who opens the file.")))) return;
     try {
       const file = await send({ type: "exportBackup", password, includeHistory: $("#backupHistory").checked });
       download(`hatchr-backup-${new Date().toISOString().slice(0, 10)}${file.encrypted ? "-locked" : ""}.json`, JSON.stringify(file, null, 2));
@@ -1723,7 +1792,7 @@ function renderSettings() {
     e.target.value = "";
     if (!f) return;
     const text = await f.text();
-    if (!confirm(t("Replace your current settings, API keys and wallet with this backup?"))) return;
+    if (!(await ask(t("Replace your current settings, API keys and wallet with this backup?")))) return;
     try {
       const r = await send({ type: "importBackup", file: text, password: $("#backupPw").value });
       settings = { ...DEFAULTS, ...((await chrome.storage.local.get("settings")).settings || {}) };
@@ -1884,7 +1953,9 @@ function applyLanguage() {
 }
 
 async function load() {
-  const st = await chrome.storage.local.get(["settings", "feed", "deploys", "axiomStatus", "onboardSeen", "aiUsage", "rewards", "metaTokens", "pumpStatus"]);
+  const st = await chrome.storage.local.get(["settings", "feed", "deploys", "axiomStatus", "onboardSeen", "aiUsage", "rewards", "metaTokens", "pumpStatus", "heldCoins", "heldInfo"]);
+  heldCoins = st.heldCoins || [];
+  heldInfo = st.heldInfo || null;
   pumpStatus = st.pumpStatus || null;
   vanityJob = (await chrome.storage.local.get("vanityJob")).vanityJob || null;
   rewards = st.rewards || null;
@@ -1913,12 +1984,17 @@ chrome.storage.onChanged.addListener((ch, area) => {
     const before = settings.language;
     settings = { ...DEFAULTS, ...(ch.settings.newValue || {}) };
     if (settings.language !== before) applyLanguage();
-    else { renderHeader(); renderFeed(); renderDeploys(); }
+    else { renderHeader(); renderFeed(); renderDeploys(); renderHeld(); }
     renderTier();
     const m = document.getElementById("s-aiModel");
     if (m && document.activeElement !== m && m.value !== settings.aiModel) m.value = settings.aiModel;
   }
   if (ch.feed) { feed = ch.feed.newValue || []; renderFeed(); }
+  if (ch.heldCoins || ch.heldInfo) {
+    if (ch.heldCoins) heldCoins = ch.heldCoins.newValue || [];
+    if (ch.heldInfo) heldInfo = ch.heldInfo.newValue || null;
+    renderHeld();
+  }
   if (ch.metaTokens) {
     const n = Object.keys(ch.metaTokens.newValue || {}).length;
     if (n !== metaCount) { metaCount = n; if (!ch.feed) renderFeed(); }

@@ -251,7 +251,7 @@ async function fakeFetch(url, init = {}) {
     return json({ solana: { usd: 150, eur: 138, gbp: 118 } });
   }
   if (url.startsWith("https://blocked.rpc")) return json({ jsonrpc: "2.0", error: { code: 403, message: "Access forbidden" } }, 403);
-  if (url.startsWith("https://api.mainnet-beta.solana.com")) {
+  if (url.startsWith("https://api.mainnet-beta.solana.com") || url.startsWith("https://mainnet.helius-rpc.com/?api-key=held")) {
     const { method, params } = JSON.parse(init.body);
     const verify = () => {
       const tx = VersionedTransaction.deserialize(Buffer.from(params[0], "base64"));
@@ -266,7 +266,14 @@ async function fakeFetch(url, init = {}) {
         if (net.vaults && params[0] === net.vaults.curve) return json({ result: { value: net.claimed ? 890880 : 890880 + 0.03e9 } });
         return json({ result: { value: (net.sold ? 0.6 : 0.5) * 1e9 + (net.claimed ? 0.04e9 : 0) } });
       }
+      case "getAssetBatch":
+        net.assetAsks = [...(net.assetAsks || []), params.ids];
+        return json({ result: params.ids.map((id) => (net.assets || {})[id]).filter(Boolean) });
       case "getTokenAccountsByOwner": {
+        if (params[1] && params[1].programId) { // every token account of a wallet, per token program
+          const rows = ((net.wallets || {})[params[0]] || []).filter((r) => (r.program || "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA") === params[1].programId);
+          return json({ result: { value: rows.map((r) => ({ account: { data: { parsed: { info: { mint: r.mint, tokenAmount: { amount: String(r.ui * 1e6), decimals: 6, uiAmount: r.ui } } } } } })) } });
+        }
         if (params[1] && params[1].mint === "So11111111111111111111111111111111111111112") {
           const ui = net.vaults && params[0] === net.vaults.ammAuthority && !net.claimed ? 0.01 : 0;
           return json({ result: { value: ui ? [{ account: { data: { parsed: { info: { tokenAmount: { amount: String(ui * 1e9), decimals: 9, uiAmount: ui } } } } } }] : [] } });
@@ -1733,6 +1740,65 @@ console.log("Callouts (pump.fun)");
     }
     assert.equal(net.callouts.length, n);
     net.calloutReply = null;
+  });
+}
+console.log("Other coins you hold");
+{
+  const MINT = "93p4QaYFhJyQZSwKbHXLWexVxtLr7HiR35ZdBnUzpump", MINT2 = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJospump", OTHER = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const PUMPWALLET = "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T";
+  await t("held coins: pump.fun coins in the Hatchr wallet and in your pump.fun wallet are listed, with names from the RPC; other tokens and empty accounts are not", async () => {
+    const { env, msg } = await boot(baseSettings({ mode: "manual", dryRun: false, rpcUrl: "https://mainnet.helius-rpc.com/?api-key=held", calloutWallet: PUMPWALLET }), secretB58);
+    const own = (await msg({ type: "walletPub" })).data;
+    net.wallets = {
+      [own]: [{ mint: MINT, ui: 1_500_000 }, { mint: OTHER, ui: 25 }, { mint: "ZeroBa1ance11111111111111111111111111111pump", ui: 0 }],
+      [PUMPWALLET]: [{ mint: MINT2, ui: 420_000, program: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" }],
+    };
+    net.assets = { [MINT]: { id: MINT, content: { metadata: { name: "wifgiving", symbol: "wifgiving", description: "24/7 flywheel for charity" }, links: { image: "https://ipfs.io/ipfs/pic" } } },
+      [MINT2]: { id: MINT2, content: { metadata: { name: "K9 Neo", symbol: "NEO" }, links: { image: "javascript:alert(1)" } } } };
+    net.assetAsks = [];
+    const r = await msg({ type: "scanHeld" });
+    assert.ok(r.ok, r.error);
+    const held = env.store.heldCoins;
+    assert.deepEqual(held.map((c) => c.mint), [MINT, MINT2], "only pump.fun coins with a balance");
+    assert.deepEqual([held[0].name, held[0].ticker, held[0].amount, held[0].wallet], ["wifgiving", "WIFGIVING", 1_500_000, own]);
+    assert.equal(held[0].image, "https://ipfs.io/ipfs/pic");
+    assert.deepEqual([held[1].ticker, held[1].wallet, held[1].image], ["NEO", PUMPWALLET, ""], "the second wallet is read too; a picture that is not a web address is dropped");
+    assert.equal(held[0].id, `held:${MINT}`);
+    await msg({ type: "scanHeld" });
+    assert.equal(net.assetAsks.length, 1, "names already known are not asked for again");
+  });
+  await t("held coins: a coin launched here that you still hold is not listed twice, and without a wallet nothing is read", async () => {
+    let { env, msg } = await boot(baseSettings({ mode: "manual", dryRun: false, rpcUrl: "https://mainnet.helius-rpc.com/?api-key=held" }), secretB58);
+    const own = (await msg({ type: "walletPub" })).data;
+    net.wallets = { [own]: [{ mint: MINT, ui: 100 }, { mint: MINT2, ui: 200 }] };
+    net.assets = {};
+    env.store.deploys = [{ id: "d1", ok: true, dryRun: false, mint: MINT, signature: "Sig", holding: 100, ticker: "WIF", name: "wifgiving" }];
+    await msg({ type: "scanHeld" });
+    assert.deepEqual(env.store.heldCoins.map((c) => c.mint), [MINT2]);
+    ({ env, msg } = await boot(baseSettings({ mode: "manual", dryRun: false })));
+    await msg({ type: "scanHeld" });
+    assert.deepEqual(env.store.heldCoins, []);
+    assert.equal(env.store.heldInfo.error, "no-wallet");
+  });
+  await t("held coins: a callout on a held coin is written from its name and description, sent directly and remembered", async () => {
+    net.callouts = []; net.calloutReply = null; net.aiBodies = [];
+    net.aiBehavior = { "llama-3.3-70b-versatile": "ok" };
+    net.aiReply = { callouts: ["wifgiving gives its fees to charity around the clock, and I'm holding.", "A flywheel for charity that never sleeps.", "Holding wifgiving for the story."] };
+    const { env, msg } = await boot(baseSettings({ mode: "manual", dryRun: false, aiEnabled: true, aiKey: "gsk_test", aiUrl: "https://api.groq.com/openai/v1/chat/completions", aiModel: "llama-3.3-70b-versatile" }), secretB58);
+    env.store.heldCoins = [{ id: `held:${MINT}`, mint: MINT, name: "wifgiving", ticker: "WIFGIVING", description: "24/7 flywheel for charity", amount: 5, ok: true, dryRun: false },
+      { id: `held:${MINT2}`, mint: MINT2, name: "", ticker: "", amount: 5, ok: true, dryRun: false }];
+    let r = await msg({ type: "calloutTexts", id: `held:${MINT}` });
+    assert.ok(r.ok && r.data.by === "ai" && r.data.texts.length === 3, JSON.stringify(r));
+    assert.match(net.aiBodies.at(-1).messages.at(-1).content, /flywheel for charity/);
+    r = await msg({ type: "calloutTexts", id: `held:${MINT2}` });
+    assert.equal(r.data.texts.length, 0, "nothing is known about a coin without a name, so no text is made up");
+    r = await msg({ type: "calloutCreate", id: `held:${MINT}`, mint: MINT, text: "Holding wifgiving for the story." });
+    assert.ok(r.ok && r.data.sent, JSON.stringify(r));
+    assert.equal(net.callouts.at(-1).body.coinMint, MINT);
+    assert.ok(env.store.heldCoins[0].calledAt > 0 && /\/callouts\//.test(env.store.heldCoins[0].calloutUrl), "the held coin remembers its callout");
+    r = await msg({ type: "calloutCreate", id: `held:${MINT}`, mint: MINT2, text: "x" });
+    assert.equal(r.ok, false, "the address must be the held coin's own");
+    net.aiReply = null; net.aiBehavior = null;
   });
 }
 console.log(`\n${passed} passed${process.exitCode ? ", some FAILED" : ""}`);

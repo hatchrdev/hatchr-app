@@ -12,7 +12,7 @@ import { fetchChannel } from "./lib/telegram.js";
 import { coinUrl } from "./lib/platforms.js";
 import { badChars } from "./lib/vanity.js";
 import { loadTokenConfig } from "./lib/token.js";
-import { calloutTexts } from "./lib/callout.js";
+import { calloutTexts, validMint } from "./lib/callout.js";
 import { PublicKey as PublicKeyStr } from "@solana/web3.js";
 import bs58 from "bs58";
 
@@ -1107,7 +1107,14 @@ async function testSetup() {
 // ---------- callouts (pump.fun) ----------
 // Texts for a coin you hold, written by your AI from the coin's own facts (built-in texts without an AI).
 async function calloutFor(id) {
-  const { deploys = [], feed = [] } = await chrome.storage.local.get(["deploys", "feed"]);
+  const { deploys = [], feed = [], heldCoins = [] } = await chrome.storage.local.get(["deploys", "feed", "heldCoins"]);
+  if (String(id).startsWith("held:")) { // a coin you hold but did not launch here: only its own name and description are known
+    const h = heldCoins.find((x) => x.id === id);
+    if (!h) throw new Error("Coin not found");
+    const s = await getSettings();
+    if (!h.name && !h.ticker) return { texts: [], by: "built-in" }; // nothing is known about it: you write the text yourself
+    return calloutTexts(s, { name: h.name || "", ticker: h.ticker || "", description: h.description || "", handle: "", postText: "", ageMin: null }, { useAi: aiReady(s) });
+  }
   const d = deploys.find((x) => x.id === id);
   if (!d || !d.mint) throw new Error("Coin not found");
   const card = feed.find((c) => c.id === d.cardId);
@@ -1116,11 +1123,87 @@ async function calloutFor(id) {
   return calloutTexts(s, coin, { useAi: aiReady(s) });
 }
 
+// ---------- coins you hold (for callouts on coins you did not launch here) ----------
+// Lists the pump.fun coins held by the Hatchr wallet and, if set, by the wallet you use on pump.fun (a public address,
+// read only). Names and pictures come from the RPC when it can give them (Helius); without that a coin shows by address.
+const TOKEN_PROGRAMS = ["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"];
+const HELD_MAX = 40;
+const webPicture = (u) => (typeof u === "string" && /^https:\/\//i.test(u) ? u.slice(0, 500) : "");
+
+async function scanHeld() {
+  const s = await getSettingsRaw();
+  const secret = await getSecret();
+  const owners = [];
+  try { if (secret) owners.push(parseSecret(secret).publicKey.toBase58()); } catch {}
+  const extra = String(s.calloutWallet || "").trim();
+  if (extra && validMint(extra) && !owners.includes(extra)) owners.push(extra);
+  if (!owners.length) { await chrome.storage.local.set({ heldCoins: [], heldInfo: { at: Date.now(), error: "no-wallet" } }); return []; }
+  const found = new Map();
+  let error = "";
+  for (const owner of owners) {
+    for (const programId of TOKEN_PROGRAMS) {
+      try {
+        const r = await rpc(s.rpcUrl, "getTokenAccountsByOwner", [owner, { programId }, { encoding: "jsonParsed", commitment: "confirmed" }]);
+        for (const acc of r?.value || []) {
+          const info = acc.account?.data?.parsed?.info;
+          const amount = Number(info?.tokenAmount?.uiAmount || 0);
+          if (!info?.mint || !(amount > 0) || !/pump$/.test(info.mint) || !validMint(info.mint)) continue; // pump.fun coin addresses end in "pump"
+          const cur = found.get(info.mint) || { mint: info.mint, amount: 0, wallet: owner };
+          cur.amount += amount;
+          found.set(info.mint, cur);
+        }
+      } catch (e) { error = String((e && e.message) || e).slice(0, 200); }
+    }
+  }
+  const { deploys = [], heldCoins: before = [], metaTokens = {} } = await chrome.storage.local.get(["deploys", "heldCoins", "metaTokens"]);
+  // coins launched here and still held already have their own row with a Callout button
+  const own = new Set(deploys.filter((d) => d.ok && !d.dryRun && d.mint && !d.sold && d.holding !== 0).map((d) => d.mint));
+  const list = [...found.values()].filter((c) => !own.has(c.mint)).sort((a, b) => b.amount - a.amount).slice(0, HELD_MAX);
+  const known = new Map(before.map((c) => [c.mint, c]));
+  for (const c of list) {
+    const k = known.get(c.mint), d = deploys.find((x) => x.mint === c.mint), m = metaTokens[c.mint];
+    c.name = k?.name || d?.name || m?.name || "";
+    c.ticker = k?.ticker || d?.ticker || m?.ticker || "";
+    c.description = k?.description || d?.description || "";
+    c.image = k?.image || d?.image || "";
+    if (k?.calledAt) { c.calledAt = k.calledAt; c.calloutUrl = k.calloutUrl || ""; }
+  }
+  const unnamed = list.filter((c) => !c.name);
+  if (unnamed.length && /helius/i.test(s.rpcUrl || "")) {
+    try {
+      const assets = await rpc(s.rpcUrl, "getAssetBatch", { ids: unnamed.map((c) => c.mint) });
+      for (const a of Array.isArray(assets) ? assets : []) {
+        const c = a && unnamed.find((x) => x.mint === a.id);
+        if (!c) continue;
+        c.name = sanitizeName(String(a.content?.metadata?.name || "")) || "";
+        c.ticker = sanitizeTicker(String(a.content?.metadata?.symbol || ""), 12) || "";
+        c.description = String(a.content?.metadata?.description || "").slice(0, 300);
+        c.image = webPicture(a.content?.links?.image) || webPicture(a.content?.files?.[0]?.cdn_uri) || webPicture(a.content?.files?.[0]?.uri);
+      }
+    } catch {}
+  }
+  // the callout sender only accepts coins it finds in storage as real, live coins
+  const heldCoins = list.map((c) => ({ ...c, id: `held:${c.mint}`, ok: true, dryRun: false }));
+  await chrome.storage.local.set({ heldCoins, heldInfo: { at: Date.now(), error: heldCoins.length ? "" : error, wallets: owners.length } });
+  return heldCoins;
+}
+
+function updateHeld(id, patch) {
+  return withLock(async () => {
+    const { heldCoins = [] } = await chrome.storage.local.get("heldCoins");
+    const i = heldCoins.findIndex((c) => c.id === id);
+    if (i < 0) return null;
+    heldCoins[i] = { ...heldCoins[i], ...patch };
+    await chrome.storage.local.set({ heldCoins });
+    return heldCoins[i];
+  });
+}
+
 // Sends a callout straight from Hatchr. The request itself lives in callout-client.js (loaded next to this file, shared
 // with the desktop app): it posts with the login the browser already has, never reads or stores that login, and never
 // repeats a post whose answer was lost. Here it only gets the function that marks the coin as called.
 function createCallout(msg) {
-  return globalThis.HatchrCallouts.create(msg, updateDeploy);
+  return globalThis.HatchrCallouts.create(msg, (id, patch) => (String(id).startsWith("held:") ? updateHeld(id, patch) : updateDeploy(id, patch)));
 }
 
 // ---------- messages ----------
@@ -1242,6 +1325,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return reply(sellDeploy(msg.id)), true;
     case "holdings":
       return reply(refreshHoldings(msg.ids || [])), true;
+    case "scanHeld":
+      return reply(scanHeld()), true;
     case "openAxiom":
       chrome.tabs.create({ url: msg.platform ? coinUrl(msg.platform, msg.mint) : axiomUrl(msg.mint), active: true }).then(() => sendResponse({ ok: true })).catch((e) => sendResponse({ ok: false, error: e.message }));
       return true;

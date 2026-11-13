@@ -241,6 +241,9 @@ export const DEFAULTS = {
   website: "",
   telegram: "",
 
+  // callouts
+  calloutWallet: "", // public address of the wallet you use on pump.fun, if it is not the Hatchr wallet: its coins are listed for callouts too
+
   // deploy
   rpcUrl: "https://api.mainnet-beta.solana.com",
   pinataJwt: "",
