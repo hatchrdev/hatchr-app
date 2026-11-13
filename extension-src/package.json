@@ -1,0 +1,17 @@
+{
+  "name": "hatchr-extension",
+  "private": true,
+  "version": "3.5.10",
+  "description": "Source of the Hatchr Chrome extension. The desktop app wraps the same build (see ../sync.mjs).",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node build.mjs && node test/run-tests.mjs && node --test test/app/*.test.cjs",
+    "zip": "node build.mjs && cd extension && zip -q -r -X ../hatchr-extension.zip . -x \"source/*\" -x \"README.md\""
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.99.0",
+    "bs58": "^6.0.0",
+    "esbuild": "^0.28.2"
+  }
+}

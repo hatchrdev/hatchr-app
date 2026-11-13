@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hatchr</title>
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <script src="splash.js"></script>
+  <div id="app">
+  <div class="sticky-head">
+  <header class="top">
+    <div class="brand"><img class="logo-img" src="icons/logo.svg" alt="" /><span class="tier-dot" id="tierDot" hidden></span><span class="wordmark">Hatchr</span><span class="ai-badge" data-i18n-title="AI names and pictures every coin for you" title="AI names and pictures every coin for you">AI</span><button class="tier-badge" id="tierBadge" hidden></button></div>
+    <div class="controls">
+      <div class="seg" id="modeSeg">
+        <button data-mode="manual" data-i18n="Manual">Manual</button>
+        <button data-mode="auto" data-i18n="Auto">Auto</button>
+      </div>
+      <button class="chip mode-chip" id="dryBtn"><span class="mdot"></span><span class="lbl">TEST</span></button>
+      <button class="chip pause-chip" id="pauseBtn">
+        <svg class="ic-pause" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="2.5" width="3" height="11" rx="1"/><rect x="9.5" y="2.5" width="3" height="11" rx="1"/></svg>
+        <svg class="ic-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4a.8.8 0 0 0 1.2.7l8.4-5.2a.8.8 0 0 0 0-1.4L5.7 2.1a.8.8 0 0 0-1.2.7z"/></svg>
+        <span class="lbl">Pause</span>
+      </button>
+    </div>
+  </header>
+  <div class="banner" id="banner" hidden></div>
+
+  <nav class="tabs">
+    <button data-tab="feed" class="on"><span data-i18n="Feed">Feed</span> <span class="count" id="feedCount"></span></button>
+    <button data-tab="launched"><span data-i18n="Launched">Launched</span> <span class="count" id="depCount"></span></button>
+    <button data-tab="settings"><span data-i18n="Settings">Settings</span></button>
+    <div class="balbox"><span class="bal" id="bal">no wallet</span><button class="cur-btn" id="curBtn" data-i18n-title="Show amounts in SOL, $, € or £" title="Show amounts in SOL, $, € or £"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.2 1.8 14.4 5l-3.2 3.2-1-1 1.5-1.5H3V4.3h8.7L10.2 2.8z"/><path d="M4.8 14.2 1.6 11l3.2-3.2 1 1-1.5 1.5H13v1.4H4.3l1.5 1.5z"/></svg></button><button class="icon-btn" id="balRefresh" data-i18n-title="Refresh balance and holdings" title="Refresh balance and holdings">⟳</button></div>
+  </nav>
+  <nav class="subtabs" id="subtabs" hidden></nav>
+  </div>
+
+  <main>
+    <section id="tab-feed" class="tab on">
+      <div class="manual">
+        <textarea id="manualText" rows="2" data-i18n-ph="Paste a headline, tweet text or link to make a coin from anything…" placeholder="Paste a headline, tweet text or link to make a coin from anything…"></textarea>
+        <div class="manual-row">
+          <input id="manualImg" data-i18n-ph="Image URL (optional)" placeholder="Image URL (optional)" />
+          <button id="manualGo" data-i18n="Generate">Generate</button>
+        </div>
+      </div>
+      <div class="feed-head">
+        <span class="muted" id="feedHint"></span>
+        <span class="head-links"><button class="link" id="watchBtn">Turn off</button><button class="link" id="clearFeed" data-i18n="Clear">Clear</button></span>
+      </div>
+      <div id="feed"></div>
+    </section>
+
+    <section id="tab-launched" class="tab">
+      <div id="rewardsBox" class="rewards"></div>
+      <div class="feed-head">
+        <span class="muted" id="depSummary"></span>
+        <button class="link" id="clearDeps" data-i18n="Clear">Clear</button>
+      </div>
+      <div id="deploys"></div>
+    </section>
+
+    <section id="tab-settings" class="tab">
+      <div id="settingsForm"></div>
+      <div class="save-bar" id="saveBar">
+        <button id="saveBtn" data-i18n="Save settings">Save settings</button>
+        <button id="testBtn" class="ghost" data-i18n="Test setup">Test setup</button>
+      </div>
+      <div id="testOut"></div>
+    </section>
+    <footer class="foot"><a href="https://hatchr.pro/#privacy" target="_blank" rel="noopener" data-i18n="Privacy">Privacy</a></footer>
+  </main>
+  </div>
+
+  <div id="guidePop" class="guide-pop" hidden></div>
+  <div id="curPop" class="cur-pop" hidden></div>
+  <div id="modal" class="modal" hidden><div class="modal-box" id="modalBox"></div></div>
+  <input type="file" id="filePick" accept="image/*" hidden />
+  <script src="callout-locales.js"></script>
+  <script src="callout-dialog.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>

@@ -27,6 +27,17 @@ The app is not signed by Microsoft or Apple yet, so the first start needs one ex
 - `main.js` runs the extension's background worker in a hidden window, the panel in the main window, and Axiom and X in their own windows with the extension's content scripts.
 - Settings, wallet and history are saved in the app's own data folder on your computer.
 
+## Where the code lives
+
+- `extension-src/` is the source of the Chrome extension: `src/` (code), `test/` (tests), `build.mjs`.
+  Build and test it with `cd extension-src && npm ci && npm test`. The build lands in `extension-src/extension/`.
+- `app/` is that build, committed so the desktop installers can be made without a build step. **Do not edit `app/` by
+  hand.** Change `extension-src/src/`, then run `npm run build` there and `node sync.mjs` in the repo root, which
+  replaces `app/` with the new build.
+- `main.js`, `chrome-api.js`, `preload-*.js`, `desktop-callouts.js` are the desktop app around it.
+- `docs/` is the hatchr.pro website.
+- Bump the version in `extension-src/src/manifest.json`, `extension-src/package.json` and the root `package.json` together.
+
 ## Direct Pump.fun callouts (3.5.9)
 
 The callout composer posts directly through the Pump.fun API. In the extension,
@@ -36,7 +47,7 @@ from Chrome and uses a sandboxed web window without access to Hatchr's wallet or
 settings. Sending a callout does not open that window; only explicit login/view
 links do. Pump.fun still enforces account eligibility and holding requirements.
 
-Shared request and composer code lives in `app/callout-*.js`. The desktop engine
+Shared request and composer code lives in `extension-src/src/callout-*.js` (copied into `app/` by the build). The desktop engine
 uses `desktop-callouts.js` through a restricted IPC method, and an in-memory
 session store retains attempt markers if the engine reloads. No copied auth token
 is required. Ambiguous responses are not automatically retried.

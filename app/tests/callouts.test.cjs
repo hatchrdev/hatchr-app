@@ -7,7 +7,7 @@ const { webcrypto } = require('node:crypto');
 const MINT = '93p4QaYFhJyQZSwKbHXLWexVxtLr7HiR35ZdBnUzpump';
 const ID = 'test-callout-id';
 const INPUT = { id: 'launch-1', mint: MINT, text: 'My own callout text' };
-const source = fs.readFileSync(path.join(__dirname, '../callout-client.js'), 'utf8');
+const source = fs.readFileSync([path.join(__dirname, '../callout-client.js'), path.join(__dirname, '../../src/callout-client.js')].find(p => fs.existsSync(p)), 'utf8');
 const success = () => new Response(JSON.stringify({ callout: { calloutId: ID, coinMint: MINT } }), { status: 201 });
 
 function harness({ response = success, permission = true, storageFailure = false, historyFailure = false, timeout = false } = {}) {
@@ -57,6 +57,20 @@ test('posts the replay payload with browser credentials and records the confirme
   assert.equal(h.records[0].id, INPUT.id);
   assert.equal(h.records[0].record.calloutUrl, result.url);
   assert.equal(JSON.stringify(h.session).includes(INPUT.text), false);
+});
+
+test('a confirmed post is recognised whichever common name the reply uses for the callout id', async () => {
+  const reply = body => () => new Response(JSON.stringify(body), { status: 201 });
+  for (const body of [{ id: ID }, { calloutId: ID }, { callout: { id: ID } }, { data: { id: ID, coinMint: MINT } }, { data: { callout: { calloutId: ID } } }]) {
+    const result = await harness({ response: reply(body) }).create();
+    assert.equal(result.sent, true, JSON.stringify(body));
+    assert.equal(result.url, `https://pump.fun/callouts/${MINT}/${ID}`);
+  }
+  for (const body of [{}, { ok: true }, { id: 'not a valid id!' }, { id: ID, error: 'nope' }, { success: false, id: ID }, { callout: { id: ID, coinMint: 'AnotherMint' } }]) {
+    const result = await harness({ response: reply(body) }).create();
+    assert.equal(result.sent, false, JSON.stringify(body));
+    assert.equal(result.reason, 'unknown', 'an unclear success is never reported as sent');
+  }
 });
 
 test('rejects invalid input and test or mismatched launches without requesting the API', async () => {

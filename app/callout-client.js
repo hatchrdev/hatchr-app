@@ -10,9 +10,11 @@
   const storageKey = mint => `hatchr.callout.${mint}`;
 
   function confirmedCallout(body, mint) {
-    const callout = body?.callout ?? body?.data?.callout ?? body;
+    // Pump.fun's reply is not documented, so the callout and its id are accepted under the names such replies usually use
+    // (callout.calloutId, callout.id, data.id, id). Without any id the post still counts as unconfirmed.
+    const callout = body?.callout ?? body?.data?.callout ?? (body?.data && typeof body.data === "object" && !Array.isArray(body.data) ? body.data : body);
     if (!callout || typeof callout !== "object" || body?.success === false || body?.error) return null;
-    const id = callout.calloutId;
+    const id = callout.calloutId ?? callout.id;
     if (typeof id !== "string" || !idPattern.test(id)) return null;
     if (callout.coinMint && callout.coinMint !== mint) return null;
     return { sent: true, url: `https://pump.fun/callouts/${mint}/${id}`, calledAt: Date.now() };
