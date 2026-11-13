@@ -27,6 +27,30 @@ The app is not signed by Microsoft or Apple yet, so the first start needs one ex
 - `main.js` runs the extension's background worker in a hidden window, the panel in the main window, and Axiom and X in their own windows with the extension's content scripts.
 - Settings, wallet and history are saved in the app's own data folder on your computer.
 
+## Direct Pump.fun callouts (3.5.9)
+
+The callout composer posts directly through the Pump.fun API. In the extension,
+sign in to Pump.fun in the same Chrome profile. In the desktop app, use its
+**Pump.fun** button to sign in once inside Hatchr. The desktop session is separate
+from Chrome and uses a sandboxed web window without access to Hatchr's wallet or
+settings. Sending a callout does not open that window; only explicit login/view
+links do. Pump.fun still enforces account eligibility and holding requirements.
+
+Shared request and composer code lives in `app/callout-*.js`. The desktop engine
+uses `desktop-callouts.js` through a restricted IPC method, and an in-memory
+session store retains attempt markers if the engine reloads. No copied auth token
+is required. Ambiguous responses are not automatically retried.
+
+Run `npm test` for the request/transport tests. `npx electron
+tests/electron-callouts.cjs --no-sandbox` runs an isolated, offline desktop smoke
+test; it intercepts HTTPS and never posts a live callout.
+On a Linux build machine without a desktop, run it under `xvfb-run -a`.
+
+Pull requests build all desktop targets without publishing. Updating `main`
+publishes the installers and an unpacked `Hatchr-extension.zip` together. The
+website source is in `docs/`. The Chrome Web Store listing is a separate release
+step; a GitHub release does not update it automatically.
+
 ## Build
 
 ```sh

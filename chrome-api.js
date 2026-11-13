@@ -100,8 +100,14 @@ function buildChrome({ engine = false } = {}) {
         set: (items) => ipcRenderer.invoke("storage:set", items),
         remove: (keys) => ipcRenderer.invoke("storage:remove", keys),
       },
+      session: {
+        get: (keys) => ipcRenderer.invoke("session:get", keys === undefined ? null : keys),
+        set: (items) => ipcRenderer.invoke("session:set", items),
+        remove: (keys) => ipcRenderer.invoke("session:remove", keys),
+      },
       onChanged,
     },
+    hatchrCallouts: { post: (payload) => ipcRenderer.invoke("callout:post", payload) },
     alarms: alarmApi,
     tabs: {
       query: (q) => ipcRenderer.invoke("tabs:query", q),

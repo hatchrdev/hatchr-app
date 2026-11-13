@@ -620,6 +620,7 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
     <h3 class="tk-sub">Judge it by what ships</h3>
     <p>The last releases, straight from the changelog.</p>
     <ul class="shipped">
+      <li><span class="v">3.5.9</span><span class="what">Direct Pump.fun callouts from Hatchr, with saved drafts, clear status messages, and support for the Windows, Mac and Linux apps.</span></li>
       <li><span class="v">3.4.2</span><span class="what">PnL cards post to X with the picture attached, smoother first-run screen, clearer toolbar icon.</span></li>
       <li><span class="v">3.4.1</span><span class="what">Lighter, faster side panel and one-click desktop download from the header.</span></li>
       <li><span class="v">3.4.0</span><span class="what">Desktop app with its own window, wide layout and installer.</span></li>
@@ -817,6 +818,7 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
       <details><summary>Which Hatchr accounts and coins are real?</summary><div><p>Only this website and <a href="https://x.com/hatchrpro" target="_blank" rel="noopener">@hatchrpro</a> on X speak for Hatchr. The real $HATCHR address is shown in the <a href="#token">$HATCHR section</a> of this page and inside the extension. A coin or an account that links to hatchr.pro proves nothing: anyone can paste a link. Hatchr will never message you first to ask for money, a wallet connection or a private key.</p></div></details>
       <details><summary>Can it spend my money by accident?</summary><div><p>It's built not to. It starts paused and in test mode, also after every Chrome restart. Auto mode has hourly, daily and SOL-per-day limits and stops below a minimum balance. LIVE pulses red whenever real SOL can be used.</p></div></details>
       <details><summary>Do I need Chrome?</summary><div><p>The extension works in Chrome and other Chromium browsers like Brave and Edge. If you'd rather not use a browser, there's a <a href="#desktop">desktop app</a> for Windows, Mac and Linux with the same features.</p></div></details>
+      <details><summary>How do I send a Pump.fun callout?</summary><div><p>Open a live coin's callout composer in the Launched tab, write or choose a text, and press Send callout. Hatchr sends it directly and shows the result without opening Pump.fun for each post.</p><p>The extension uses your Pump.fun login in the same Chrome profile. In the desktop app, use its Pump.fun button to sign in once; that session is separate from Chrome. Pump.fun still checks your account's wallet holdings and callout limits. If a response is lost, check Pump.fun before trying again.</p></div></details>
       <details><summary>Do I need Axiom?</summary><div><p>No, but it's the fastest source. You can use X tabs and Telegram channels instead, and the pump.fun live stream keeps the meta working without Axiom.</p></div></details>
       <details><summary>Where is my private key?</summary><div><p>In the extension's storage in your own Chrome profile, unencrypted like its other settings. It's only used to sign your own transactions in your browser. Use a burner wallet with small amounts, and set a password on backups.</p></div></details>
       <details><summary>Which AI should I use?</summary><div><p>Start with Groq: it's free and fast. Gemini is a good free second. If you already pay for an AI, pick it in Settings → AI, or link it with "My own AI".</p></div></details>
@@ -887,6 +889,7 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
         <tbody>
           <tr><td>PumpPortal</td><td>Your wallet's public address, the coin's name, ticker and metadata link, trade amounts</td><td>Builds the create, sell and claim transactions, which Hatchr signs locally</td></tr>
           <tr><td>PumpPortal data stream</td><td>Only a request to receive new and graduating coins; nothing about you</td><td>Follows the pump.fun meta. Runs only while AI naming and the meta are on.</td></tr>
+          <tr><td>Pump.fun callouts</td><td>The coin address, your callout text, and the Pump.fun login cookies managed by your browser or the desktop app</td><td>Publishes a callout only when you press Send callout. The text is public. Hatchr does not copy the session cookies into its settings or backups.</td></tr>
           <tr><td>Your Solana RPC (e.g. Helius)</td><td>Signed transactions; balance, token and reward lookups for your wallet; name lookups for graduated coins</td><td>Sends transactions and reads balances</td></tr>
           <tr><td>Pinata (IPFS)</td><td>The coin image and metadata, including the link to the source post</td><td>Coin images must be public. Anything uploaded to IPFS is public and permanent.</td></tr>
           <tr><td>Your AI provider</td><td>The text of a post, its context, and a short summary of current coin names</td><td>Suggests a name, ticker and score. Optional.</td></tr>
@@ -894,7 +897,7 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
           <tr><td>hatchr.pro</td><td>Only a request for a small public file with the official $HATCHR address and the tier amounts; nothing about you</td><td>Tells the extension which coin is the real $HATCHR. Your $HATCHR balance itself is read through your Solana RPC.</td></tr>
           <tr><td>CoinGecko</td><td>Only a request for the SOL price</td><td>Shows amounts in USD, EUR or GBP. Optional.</td></tr>
           <tr><td>X, Axiom, Telegram and their media servers</td><td>Normal page and media requests from your browser</td><td>Reads the posts you follow and their media</td></tr>
-          <tr><td>Trading sites (Axiom, pump.fun, GMGN, BullX, Padre, DEX Screener)</td><td>Nothing, until you open a coin there in a new tab</td><td>Opens the coin's page</td></tr>
+          <tr><td>Trading-site links (Axiom, pump.fun, GMGN, BullX, Padre, DEX Screener)</td><td>The coin address when you choose to open its page</td><td>Opens the coin's page. Direct Pump.fun callouts are described separately above.</td></tr>
         </tbody>
       </table>
     </div>

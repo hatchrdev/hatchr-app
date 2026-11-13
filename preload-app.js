@@ -46,7 +46,15 @@ if (/\/sidepanel\.html$/.test(location.pathname)) {
     .tb-win button svg { width: 10px; height: 10px; stroke-width: 1.1; }
     .tb-win button:hover { background: rgba(255, 255, 255, .08); color: #fff; }
     .tb-win button.close:hover { background: #e5484d; color: #fff; }
-    html.mac .tb-win { display: none; }`;
+    html.mac .tb-win { display: none; }
+    @media (max-width: 600px) {
+      #titlebar { gap: 4px; padding-left: 8px; }
+      .tb-label { display: none; }
+      .tb-site { padding: 0 6px; gap: 4px; }
+      .tb-quit { padding: 0 7px; margin-right: 2px; }
+      .tb-win { flex: none; }
+      .tb-win button { width: 32px; }
+    }`;
   window.addEventListener("DOMContentLoaded", () => {
     document.documentElement.classList.add("desktop", mac ? "mac" : "win");
     const style = document.createElement("style");
@@ -58,6 +66,7 @@ if (/\/sidepanel\.html$/.test(location.pathname)) {
       <span class="tb-label">OPEN</span>
       <button class="tb-site" data-open="axiom" title="Open Axiom in its own window">Axiom ${ICON.ext}</button>
       <button class="tb-site" data-open="x" title="Open X in its own window">X ${ICON.ext}</button>
+      <button class="tb-site" data-open="pump" title="Sign in to pump.fun for direct callouts">Pump.fun ${ICON.ext}</button>
       <div class="tb-fill"></div>
       <button class="tb-quit" data-open="quit" title="Stop Hatchr completely. Closing the window keeps it running.">${ICON.quit} Quit</button>
       <div class="tb-win">

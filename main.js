@@ -3,7 +3,8 @@
 // - a hidden "engine" window runs background.js, a hidden helper runs offscreen.html
 // - the panel window shows sidepanel.html
 // - Axiom / X open in "site" windows with the extension's content scripts injected
-const { app, BrowserWindow, ipcMain, protocol, net, shell, Tray, Menu, Notification, nativeImage, screen, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, protocol, net, session, shell, Tray, Menu, Notification, nativeImage, screen, dialog } = require("electron");
+const { postCallout } = require("./desktop-callouts.js");
 const path = require("node:path");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
@@ -207,6 +208,28 @@ ipcMain.handle("storage:remove", (e, keys) => {
   broadcastChanges(changes);
 });
 
+// Ephemeral storage survives an engine reload and disappears when Hatchr quits,
+// matching chrome.storage.session. Remote site windows cannot access it.
+const sessionStore = new Map();
+ipcMain.handle("session:get", appOnly((_e, keys) => {
+  if (keys == null) return clone(Object.fromEntries(sessionStore));
+  if (typeof keys === "string") keys = [keys];
+  if (Array.isArray(keys)) return clone(Object.fromEntries(keys.filter(k => sessionStore.has(k)).map(k => [k, sessionStore.get(k)])));
+  return clone(Object.fromEntries(Object.entries(keys).map(([k, value]) => [k, sessionStore.has(k) ? sessionStore.get(k) : value])));
+}, {}));
+ipcMain.handle("session:set", appOnly((_e, items) => {
+  for (const [key, value] of Object.entries(items || {})) sessionStore.set(key, clone(value));
+}));
+ipcMain.handle("session:remove", appOnly((_e, keys) => {
+  for (const key of [].concat(keys)) sessionStore.delete(key);
+}));
+ipcMain.handle("callout:post", (e, payload) => {
+  if (!isApp(e) || e.sender !== engineWin?.webContents || e.senderFrame?.url !== `${ORIGIN}/background.html`) {
+    throw new Error("Callouts can only be sent by the Hatchr engine");
+  }
+  return postCallout(session.defaultSession, payload);
+});
+
 // ---------------- messages (chrome.runtime.sendMessage) ----------------
 const pending = new Map();
 let msgSeq = 0;
@@ -215,7 +238,7 @@ ipcMain.handle("rt:send", (e, msg) => {
   const from = BrowserWindow.fromWebContents(e.sender);
   const site = !isApp(e);
   if (site && !SITE_MESSAGES.has(msg && msg.type)) return { error: "Could not establish connection. Receiving end does not exist." };
-  const sender = site ? { tab: { id: from ? from.id : -1, url: e.sender.getURL() }, url: e.sender.getURL() } : { id: "hatchr", url: e.sender.getURL() };
+  const sender = site ? { tab: { id: from ? from.id : -1, url: e.sender.getURL() }, url: e.sender.getURL() } : { id: "hatchr-desktop", url: e.senderFrame?.url || e.sender.getURL() };
   const targets = internalWindows().filter((w) => w.webContents !== e.sender);
   if (!targets.length) return { error: "Could not establish connection. Receiving end does not exist." };
   const id = ++msgSeq;
@@ -391,10 +414,50 @@ function createSite(url, { active = true, pinned = false } = {}) {
   win.on("closed", () => siteWindows.delete(win.id));
   return win;
 }
+
+// Pump.fun login lives in the app's own cookie session. These are ordinary,
+// sandboxed web pages: no preload, Chrome bridge, wallet keys, or Node access.
+let pumpWin = null;
+function guardPumpWindow(win) {
+  const guard = (event, url) => {
+    try { if (new URL(url).protocol === "https:") return; } catch {}
+    event.preventDefault();
+  };
+  win.webContents.on("will-navigate", guard);
+  win.webContents.on("will-redirect", guard);
+  win.webContents.on("will-attach-webview", event => event.preventDefault());
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      if (new URL(url).protocol === "https:") return {
+        action: "allow",
+        overrideBrowserWindowOptions: { webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } }
+      };
+    } catch {}
+    return { action: "deny" };
+  });
+  win.webContents.on("did-create-window", child => guardPumpWindow(child));
+}
+function openPump(url = "https://pump.fun") {
+  if (pumpWin && !pumpWin.isDestroyed()) {
+    if (pumpWin.isMinimized()) pumpWin.restore();
+    if (pumpWin.webContents.getURL() !== url) pumpWin.loadURL(url);
+    pumpWin.show(); pumpWin.focus();
+    return pumpWin;
+  }
+  pumpWin = new BrowserWindow({
+    width: 1100, height: 800, title: "Pump.fun — Hatchr", icon: icon(), autoHideMenuBar: true,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true }
+  });
+  guardPumpWindow(pumpWin);
+  pumpWin.on("closed", () => { pumpWin = null; });
+  pumpWin.loadURL(url);
+  return pumpWin;
+}
 function openUrl(url, active = true, pinned = false) {
   let u;
   try { u = new URL(url); } catch { return null; }
   if (u.protocol === "chrome:") return null;
+  if (u.protocol === "https:" && u.hostname === "pump.fun") return openPump(url);
   if (/^https:$/.test(u.protocol) && SITE_HOSTS.test(u.hostname)) return createSite(url, { active, pinned });
   openOutside(url);
   return null;
@@ -411,6 +474,7 @@ function openSite(url) {
 ipcMain.handle("desktop:open", appOnly((_e, what) => {
   if (what === "axiom") openSite("https://axiom.trade/pulse");
   else if (what === "x") openSite("https://x.com/home");
+  else if (what === "pump") openPump();
   else if (what === "quit") { quitting = true; app.quit(); }
 }));
 

@@ -9,6 +9,16 @@
 #   https://github.com/sologgg/hatchr/releases/latest/download/Hatchr-linux.deb
 name: Build desktop apps
 on:
+  pull_request:
+    paths:
+      - "app/**"
+      - "build/**"
+      - "*.js"
+      - "*.mjs"
+      - "tests/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/**"
   push:
     branches: [main, build-test]   # build-test: build only, no release
     tags: ["v*"]
@@ -16,6 +26,8 @@ on:
       - "app/**"
       - "build/**"
       - "*.js"
+      - "*.mjs"
+      - "tests/**"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/**"
@@ -46,6 +58,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm test
+      - if: matrix.name == 'linux'
+        run: xvfb-run -a npx electron tests/electron-callouts.cjs --no-sandbox
       # app/ holds the built Chrome extension (committed), so there is no sync step here
       - run: npx electron-builder ${{ matrix.target }} --publish never
         env:
@@ -54,6 +69,8 @@ jobs:
       - if: matrix.name == 'windows'
         shell: bash
         run: cp dist/squirrel-windows/Hatchr-Setup.exe dist/ && ls -la dist dist/squirrel-windows
+      - if: matrix.name == 'linux'
+        run: cd app && zip -r ../dist/Hatchr-extension.zip . -x 'background.html' 'tests/*'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: hatchr-${{ matrix.name }}
@@ -64,6 +81,7 @@ jobs:
             dist/Hatchr-mac.dmg
             dist/Hatchr-linux.AppImage
             dist/Hatchr-linux.deb
+            dist/Hatchr-extension.zip
 
   release:
     needs: build
@@ -97,6 +115,11 @@ jobs:
             | Windows 10/11 (64-bit) | **Hatchr-Setup.exe** (installer) or Hatchr-win.zip (portable) |
             | macOS 13 Ventura or newer (Apple Silicon and Intel) | **Hatchr-mac.dmg** |
             | Linux (64-bit) | **Hatchr-linux.AppImage** or Hatchr-linux.deb |
+            | Chrome / Chromium (unpacked) | **Hatchr-extension.zip** |
+
+            Direct callouts: send from Hatchr without opening Pump.fun for every post.
+            In the desktop app, use the Pump.fun button to sign in once; this login is separate from Chrome.
+            Existing Pump.fun eligibility and holding requirements still apply.
 
             **First start**
             - Windows: SmartScreen may say "Windows protected your PC". Click *More info*, then *Run anyway*. Hatchr then installs by itself in a few seconds and opens.

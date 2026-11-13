@@ -8,5 +8,6 @@ rmSync(dst, { recursive: true, force: true });
 mkdirSync(dst, { recursive: true });
 // p uses backslashes on Windows, so compare path parts, not the text
 cpSync(src, dst, { recursive: true, filter: (p) => !p.split(/[\\/]/).includes("source") && !p.endsWith("README.md") });
-writeFileSync(new URL("./background.html", dst), '<!doctype html><meta charset="utf-8"><title>Hatchr engine</title><script src="background.js"></script>\n');
+const callouts = existsSync(new URL("./callout-client.js", dst)) ? '<script src="callout-client.js"></script>' : '';
+writeFileSync(new URL("./background.html", dst), `<!doctype html><meta charset="utf-8"><title>Hatchr engine</title>${callouts}<script src="background.js"></script>\n`);
 console.log("synced extension into app/");
