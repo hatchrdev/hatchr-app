@@ -53,6 +53,9 @@ a:hover { text-decoration: underline; }
 .banner.live { background: rgba(255,92,100,.15); color: var(--red); border-bottom: 1px solid rgba(255,92,100,.35); }
 .banner.dry { background: rgba(245,197,66,.1); color: var(--amber); border-bottom: 1px solid rgba(245,197,66,.25); }
 .banner.paused { background: #222; color: var(--muted); }
+.banner.off { background: #1b1c20; color: var(--muted); border-bottom: 1px solid var(--line, #2a2b31); }
+.banner.off .link { font-weight: 700; }
+.head-links { display: flex; gap: 12px; flex: none; margin-left: 10px; }
 
 .tabs { display: flex; border-bottom: 1px solid var(--line); padding: 0 6px; }
 .tabs button { flex: 1; border: 0; background: none; padding: 9px 4px; color: var(--muted); font-weight: 600; border-bottom: 2px solid transparent; }

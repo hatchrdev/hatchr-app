@@ -10,6 +10,9 @@
   const seen = new Set();
   const sockets = new Set();
   let lastTweetAt = 0;
+  // Nothing here runs until the extension says Hatchr is on. Switched off, this script reads nothing, changes nothing
+  // on the page and has no timers: Axiom behaves as if the extension were not installed.
+  let active = false;
 
   function unproxy(u) {
     if (!u || typeof u !== "string") return null;
@@ -79,7 +82,7 @@
 
   // ---------- 1. live stream ----------
   function onSocketMessage(e) {
-    if (typeof e.data !== "string" || e.data.indexOf("tweet") < 0) return;
+    if (!active || typeof e.data !== "string" || e.data.indexOf("tweet") < 0) return;
     let msg;
     try { msg = JSON.parse(e.data); } catch { return; }
     for (const m of Array.isArray(msg) ? msg : [msg]) {
@@ -131,15 +134,15 @@
   }
 
   let timer = null;
+  const panelObserver = new MutationObserver(() => {
+    if (timer || !active) return;
+    timer = setTimeout(() => { timer = null; if (active) { scanPanel(); markWrappers(config.keep && config.hide); } }, 150);
+  });
   const observePanel = () => {
+    if (!active) return;
     if (!document.documentElement) return setTimeout(observePanel, 50);
-    new MutationObserver(() => {
-      if (timer) return;
-      timer = setTimeout(() => { timer = null; scanPanel(); markWrappers(config.keep && config.hide); }, 150);
-    }).observe(document.documentElement, { childList: true, subtree: true });
+    panelObserver.observe(document.documentElement, { childList: true, subtree: true });
   };
-  observePanel();
-  setInterval(scanPanel, 3000);
 
   // ---------- keep the tracker panel mounted (Axiom only streams tweets while it is open) ----------
   let config = { keep: false, hide: false };
@@ -148,8 +151,11 @@
 
   window.addEventListener("message", (e) => {
     if (e.source !== window || !e.data || e.data.__t2c !== "axiom-config") return;
-    config = { keep: !!e.data.keep, hide: !!e.data.hide };
-    applyHide();
+    const on = e.data.on !== false;
+    config = { keep: on && !!e.data.keep, hide: on && !!e.data.hide };
+    if (on && !active) start();
+    else if (!on && active) stop();
+    applyHide(); // switched off: the tracker panel shows again and can be used normally
   });
 
   // The panel sits inside a few wrapper layers that also catch clicks; those are made
@@ -193,7 +199,7 @@
     return null;
   }
 
-  setInterval(() => {
+  const keepTracker = () => {
     applyHide();
     if (!config.keep || document.readyState !== "complete") return;
     if (document.getElementById("twitter-alerts")) { attempts = 0; return; }
@@ -202,7 +208,7 @@
     if (!btn) return;
     btn.click();
     if (++attempts >= 3) { attempts = 0; backoffUntil = Date.now() + 60_000; } // e.g. logged out
-  }, 3000);
+  };
 
   // ---------- meta: coins on Axiom Pulse (New Pairs / Final Stretch / Migrated) ----------
   function pulseRow(el) {
@@ -235,12 +241,26 @@
     for (const el of els) { try { const r = pulseRow(el); if (r) rows.push(r); } catch {} }
     if (rows.length) window.postMessage({ __t2c: "axiom-pulse", rows }, location.origin);
   }
-  setInterval(scanPulse, 15000);
-  setTimeout(scanPulse, 4000);
 
   // ---------- status heartbeat for the side panel ----------
-  setInterval(() => {
+  const heartbeat = () => {
     const live = [...sockets].some((s) => s.readyState === 1);
     window.postMessage({ __t2c: "axiom-status", live, hooked: sockets.size > 0, lastTweetAt }, location.origin);
-  }, 10000);
+  };
+
+  // ---------- the main switch ----------
+  let timers = [];
+  function start() {
+    active = true;
+    observePanel();
+    timers = [setInterval(scanPanel, 3000), setInterval(keepTracker, 3000), setInterval(scanPulse, 15000), setInterval(heartbeat, 10000), setTimeout(scanPulse, 4000)];
+  }
+  function stop() {
+    active = false;
+    timers.forEach((id) => clearInterval(id)); // clearInterval also cancels a timeout
+    timers = [];
+    panelObserver.disconnect();
+    if (timer) { clearTimeout(timer); timer = null; }
+    attempts = 0; backoffUntil = 0;
+  }
 })();

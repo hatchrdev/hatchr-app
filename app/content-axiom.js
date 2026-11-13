@@ -6,19 +6,25 @@
 
   try { chrome.runtime.sendMessage({ type: "hello" }).catch(() => {}); } catch {}
 
-  // tell the page script whether to keep Axiom's tracker panel open (hidden)
+  // Tell the page script what to do: watch at all (the main switch), and keep Axiom's tracker panel open (hidden).
+  // While Hatchr is switched off this bridge goes quiet too: no timer, it only listens for the switch coming back on.
+  let pushTimer = null;
   function pushConfig() {
     if (!alive) return;
     try {
       chrome.storage.local.get("settings").then(({ settings: s }) => {
-        const keep = !!s ? s.axiomEnabled !== false && s.axiomKeepTracker !== false : true;
-        const hide = !!s ? s.axiomHideTracker !== false : true;
-        window.postMessage({ __t2c: "axiom-config", keep, hide }, location.origin);
+        const on = !s || s.watching !== false;
+        const keep = on && (!!s ? s.axiomEnabled !== false && s.axiomKeepTracker !== false : true);
+        const hide = on && (!!s ? s.axiomHideTracker !== false : true);
+        window.postMessage({ __t2c: "axiom-config", on, keep, hide }, location.origin);
+        if (on && !pushTimer) pushTimer = setInterval(pushConfig, 5000);
+        if (!on && pushTimer) { clearInterval(pushTimer); pushTimer = null; }
       }).catch(() => {});
     } catch { alive = false; }
   }
   pushConfig();
-  setInterval(pushConfig, 5000);
+  setTimeout(pushConfig, 1000); // again shortly after, in case the page script was not listening yet
+  setTimeout(pushConfig, 4000);
   try { chrome.storage.onChanged.addListener((ch, area) => { if (area === "local" && ch.settings) pushConfig(); }); } catch {}
   const str = (v, max) => (typeof v === "string" ? v.slice(0, max) : "");
 

@@ -428,7 +428,12 @@ ipcMain.handle("tabs:create", appOnly((_e, o = {}) => {
   return w ? { id: w.id, url: o.url, active: o.active !== false } : { id: -1, url: o.url };
 }, { id: -1 }));
 ipcMain.handle("tabs:reload", appOnly((_e, id) => { const s = siteWindows.get(id); if (s && !s.win.isDestroyed()) s.win.webContents.reload(); }));
-ipcMain.handle("tabs:update", () => {});
+// The engine marks site windows "keep awake" while Hatchr is watching and releases them when it is switched off:
+// a released window is throttled in the background like any other, so it stops costing processor time.
+ipcMain.handle("tabs:update", appOnly((_e, id, o = {}) => {
+  const s = siteWindows.get(id);
+  if (s && !s.win.isDestroyed() && typeof o.autoDiscardable === "boolean") s.win.webContents.setBackgroundThrottling(o.autoDiscardable);
+}));
 
 // ---------------- notifications, badge, startup info ----------------
 ipcMain.handle("notify", appOnly((_e, title, body) => {

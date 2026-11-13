@@ -38,18 +38,19 @@
       await new Promise((r) => setTimeout(r, 400));
     }
   }
-  chrome.storage.local.get("settings").then(({ settings }) => {
+  // "watching" is Hatchr's main switch. With it off (or with X tabs off) this script stops completely:
+  // it reads no posts, clicks nothing and has no timer or page observer, as if the extension were not there.
+  const apply = (settings) => {
     if (settings) {
-      enabled = settings.xEnabled !== false;
+      enabled = settings.xEnabled !== false && settings.watching !== false;
       autoLoadNew = settings.xAutoLoadNew !== false;
     }
-    scan();
-  });
+    if (enabled) start();
+    else stop();
+  };
+  chrome.storage.local.get("settings").then(({ settings }) => apply(settings));
   chrome.storage.onChanged.addListener((ch, area) => {
-    if (area === "local" && ch.settings?.newValue) {
-      enabled = ch.settings.newValue.xEnabled !== false;
-      autoLoadNew = ch.settings.newValue.xAutoLoadNew !== false;
-    }
+    if (area === "local" && ch.settings?.newValue) apply(ch.settings.newValue);
   });
 
   function textOf(el) {
@@ -117,7 +118,7 @@
     } catch {
       // extension was reloaded; this old script is orphaned
       alive = false;
-      observer.disconnect();
+      stop();
     }
   }
 
@@ -136,13 +137,12 @@
     if (timer) return;
     timer = setTimeout(() => { timer = null; scan(); }, 250);
   });
-  observer.observe(document.documentElement, { childList: true, subtree: true });
 
   // Click X's "Show N posts" pill so new posts actually enter the page, but only while the page is at the top.
   // X answers that click by jumping to the top of the timeline, so clicking it while someone has scrolled down
   // to read threw them back up every few seconds. Once the page is back at the top, loading resumes.
   const atTop = () => (window.scrollY || document.documentElement.scrollTop || 0) < 200;
-  setInterval(() => {
+  const loadNew = () => {
     if (!enabled || !autoLoadNew || !alive) return;
     if (!atTop()) return;
     const pill = document.querySelector('[data-testid="pillLabel"]');
@@ -151,5 +151,21 @@
       const t = (el.innerText || "").trim();
       if (/^Show \d+ (new )?(post|posts|tweet|tweets)$/i.test(t)) { el.click(); return; }
     }
-  }, 3000);
+  };
+
+  let running = false, loadTimer = null;
+  function start() {
+    if (running || !alive) return;
+    running = true;
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    loadTimer = setInterval(loadNew, 3000);
+    scan();
+  }
+  function stop() {
+    if (!running) return;
+    running = false;
+    observer.disconnect();
+    clearInterval(loadTimer);
+    if (timer) { clearTimeout(timer); timer = null; }
+  }
 })();
