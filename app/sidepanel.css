@@ -187,6 +187,27 @@ button.ghost { background: var(--panel2) !important; color: var(--text) !importa
 .mini.axiom { color: var(--text); }
 .mini.sell { background: rgba(255,92,100,.15); border-color: rgba(255,92,100,.45); color: var(--red); }
 .mini.sell:disabled { background: var(--panel2); border-color: var(--line); color: var(--muted); cursor: default; }
+.mini.call { color: var(--green, #86efac); border-color: rgba(134,239,172,.4); background: rgba(134,239,172,.08); cursor: pointer; }
+/* callout box */
+.co { display: flex; flex-direction: column; gap: 8px; }
+.co p { margin: 0; font-size: 12px; line-height: 1.45; }
+.co-head { display: flex; align-items: center; gap: 10px; font-size: 15px; padding-right: 26px; }
+.co-head img { width: 40px; height: 40px; border-radius: 10px; object-fit: cover; flex: none; }
+.co-head .muted { font-size: 12px; }
+.co-opts { display: flex; flex-direction: column; gap: 6px; }
+.co-opt { text-align: left; font-weight: 500; font-size: 12.5px; line-height: 1.4; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); cursor: pointer; white-space: normal; }
+.co-opt.on { border-color: rgba(134,239,172,.6); background: rgba(134,239,172,.08); }
+.co-wait { font-size: 12px; display: flex; align-items: center; gap: 8px; }
+.co textarea { width: 100%; resize: vertical; }
+.co-count { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: -4px; }
+.co-row { display: flex; gap: 8px; }
+.co-row button { flex: 1; }
+.co-note { font-size: 11.5px !important; }
+.co textarea { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font: inherit; font-size: 13px; line-height: 1.4; }
+.co textarea:focus { outline: none; border-color: rgba(134,239,172,.6); }
+#coGo { border: 0; border-radius: 999px; padding: 9px 12px; font-weight: 800; color: #0b0c10; background: var(--green); cursor: pointer; }
+#coGo:disabled { opacity: .6; cursor: default; }
+.co-row button { padding: 7px 10px; font-weight: 700; cursor: pointer; }
 
 .thumb-badge { position: absolute; left: 3px; top: 3px; background: rgba(0,0,0,.72); color: var(--green); font-size: 9.5px; font-weight: 800; padding: 1px 5px; border-radius: 4px; }
 .ai-test { width: 160px; height: 160px; border-radius: 8px; display: block; margin-top: 8px; object-fit: cover; border: 1px solid var(--line); }

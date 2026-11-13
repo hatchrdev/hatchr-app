@@ -2,11 +2,11 @@
   "manifest_version": 3,
   "name": "Hatchr – Memecoin Launcher",
   "short_name": "Hatchr",
-  "version": "3.5.6",
+  "version": "3.5.7",
   "homepage_url": "https://hatchr.pro",
   "description": "Launch pump.fun memecoins from breaking posts in seconds: AI names, images, meta tracking, one-click or auto mode.",
   "minimum_chrome_version": "116",
-  "permissions": ["storage", "unlimitedStorage", "sidePanel", "alarms", "notifications", "offscreen"],
+  "permissions": ["storage", "unlimitedStorage", "sidePanel", "alarms", "notifications", "offscreen", "scripting"],
   "host_permissions": [
     "https://axiom.trade/*",
     "https://x.com/*",

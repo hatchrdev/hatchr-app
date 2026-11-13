@@ -1,7 +1,7 @@
 {
   "name": "hatchr-desktop",
   "productName": "Hatchr",
-  "version": "3.5.6",
+  "version": "3.5.7",
   "description": "Hatchr desktop app: breaking posts to pump.fun memecoins",
   "main": "main.js",
   "desktopName": "hatchr-desktop.desktop",
