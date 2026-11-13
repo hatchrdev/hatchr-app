@@ -188,10 +188,17 @@ button.ghost { background: var(--panel2) !important; color: var(--text) !importa
 .mini.sell { background: rgba(255,92,100,.15); border-color: rgba(255,92,100,.45); color: var(--red); }
 .mini.sell:disabled { background: var(--panel2); border-color: var(--line); color: var(--muted); cursor: default; }
 .mini.call { color: var(--green, #86efac); border-color: rgba(134,239,172,.4); background: rgba(134,239,172,.08); cursor: pointer; }
-/* other coins you hold */
-.held-head { margin-top: 14px; }
+/* Callouts tab */
+.call-intro { margin: 0 0 10px; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.call-wallet { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 9px 10px; margin-bottom: 4px; }
+.call-wallet label { display: block; font-weight: 700; font-size: 12.5px; }
+.call-wallet input { min-width: 0; background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 7px 8px; font-size: 12px; }
+.call-wallet .help { margin: 6px 0 0; line-height: 1.4; }
+.call-note { margin: 10px 2px 0; line-height: 1.4; }
+.held-head { margin-top: 12px; }
 .held-head .spin { margin-right: 5px; }
 .held-empty { font-size: 12px; line-height: 1.45; padding: 4px 2px 10px; }
+.held-empty.err { color: var(--red); }
 /* questions asked inside the panel (instead of Chrome dialogs) */
 .ask { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; padding: 16px; }
 .ask-box { width: 100%; max-width: 340px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px; box-shadow: 0 24px 60px rgba(0,0,0,.6); }
@@ -426,6 +433,11 @@ button.link.danger { color: var(--red); }
 .tabs.tight { gap: 4px; padding: 8px 6px; }
 .tabs.tight button[data-tab] { padding: 6px 8px; font-size: 12.5px; }
 .tabs.tight .count { display: none; }
+.tab-ic { display: none; width: 15px; height: 15px; vertical-align: -3px; }
+.tabs.icons button[data-tab="settings"] { padding: 6px 8px; }
+.tabs.icons button[data-tab="settings"] .tab-ic { display: inline-block; }
+.tabs.icons button[data-tab="settings"] .tab-lbl { display: none; }
+.tabs.wrap { flex-wrap: wrap; row-gap: 6px; }
 
 /* RPC error in the tab row: hover/click shows the Helius guide */
 .bal.bal-err { cursor: help; text-decoration: underline dotted rgba(248, 113, 113, 0.6); text-underline-offset: 3px; }

@@ -30,7 +30,8 @@
   <nav class="tabs">
     <button data-tab="feed" class="on"><span data-i18n="Feed">Feed</span> <span class="count" id="feedCount"></span></button>
     <button data-tab="launched"><span data-i18n="Launched">Launched</span> <span class="count" id="depCount"></span></button>
-    <button data-tab="settings"><span data-i18n="Settings">Settings</span></button>
+    <button data-tab="callouts"><span data-i18n="Callouts">Callouts</span> <span class="count" id="callCount"></span></button>
+    <button data-tab="settings" data-i18n-title="Settings" title="Settings"><svg class="tab-ic" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.3" fill="none" stroke="currentColor" stroke-width="2.6" stroke-dasharray="2.775 2.775"/><circle cx="8" cy="8" r="3.3" fill="none" stroke="currentColor" stroke-width="1.7"/></svg><span class="tab-lbl" data-i18n="Settings">Settings</span></button>
     <div class="balbox"><span class="bal" id="bal">no wallet</span><button class="cur-btn" id="curBtn" data-i18n-title="Show amounts in SOL, $, € or £" title="Show amounts in SOL, $, € or £"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.2 1.8 14.4 5l-3.2 3.2-1-1 1.5-1.5H3V4.3h8.7L10.2 2.8z"/><path d="M4.8 14.2 1.6 11l3.2-3.2 1 1-1.5 1.5H13v1.4H4.3l1.5 1.5z"/></svg></button><button class="icon-btn" id="balRefresh" data-i18n-title="Refresh balance and holdings" title="Refresh balance and holdings">⟳</button></div>
   </nav>
   <nav class="subtabs" id="subtabs" hidden></nav>
@@ -59,7 +60,20 @@
         <button class="link" id="clearDeps" data-i18n="Clear">Clear</button>
       </div>
       <div id="deploys"></div>
+    </section>
+
+    <section id="tab-callouts" class="tab">
+      <p class="call-intro" data-i18n="A callout tells your pump.fun followers why you hold a coin. Pick a coin below, take one of the ready texts or write your own, and send it from here.">A callout tells your pump.fun followers why you hold a coin. Pick a coin below, take one of the ready texts or write your own, and send it from here.</p>
+      <div class="call-wallet">
+        <label for="callWallet" data-i18n="Wallet you use on pump.fun">Wallet you use on pump.fun</label>
+        <div class="manual-row">
+          <input id="callWallet" spellcheck="false" autocomplete="off" data-i18n-ph="Wallet address (only if it is not your Hatchr wallet)" placeholder="Wallet address (only if it is not your Hatchr wallet)" />
+          <button id="callWalletSave" data-i18n="Save">Save</button>
+        </div>
+        <p class="help" id="callWalletNote"></p>
+      </div>
       <div id="held"></div>
+      <p class="help call-note" data-i18n="pump.fun takes a callout only from the account that is logged in to pump.fun in this browser, and only for a coin that account holds at least $1 of.">pump.fun takes a callout only from the account that is logged in to pump.fun in this browser, and only for a coin that account holds at least $1 of.</p>
     </section>
 
     <section id="tab-settings" class="tab">

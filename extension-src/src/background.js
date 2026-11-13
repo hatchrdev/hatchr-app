@@ -1156,6 +1156,10 @@ async function scanHeld() {
     }
   }
   const { deploys = [], heldCoins: before = [], metaTokens = {} } = await chrome.storage.local.get(["deploys", "heldCoins", "metaTokens"]);
+  if (error && !found.size) { // the wallet could not be read at all: keep the list from last time and say why
+    await chrome.storage.local.set({ heldInfo: { at: Date.now(), error, wallets: owners.length } });
+    return before;
+  }
   // coins launched here and still held already have their own row with a Callout button
   const own = new Set(deploys.filter((d) => d.ok && !d.dryRun && d.mint && !d.sold && d.holding !== 0).map((d) => d.mint));
   const list = [...found.values()].filter((c) => !own.has(c.mint)).sort((a, b) => b.amount - a.amount).slice(0, HELD_MAX);

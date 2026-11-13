@@ -1780,6 +1780,14 @@ console.log("Other coins you hold");
     assert.deepEqual(env.store.heldCoins, []);
     assert.equal(env.store.heldInfo.error, "no-wallet");
   });
+  await t("held coins: when the wallet can't be read, the list from last time stays and the reason is kept", async () => {
+    const { env, msg } = await boot(baseSettings({ mode: "manual", dryRun: false, rpcUrl: "https://blocked.rpc" }), secretB58);
+    env.store.heldCoins = [{ id: `held:${MINT}`, mint: MINT, name: "wifgiving", ticker: "WIFGIVING", amount: 5, ok: true, dryRun: false }];
+    const r = await msg({ type: "scanHeld" });
+    assert.ok(r.ok, r.error);
+    assert.deepEqual(env.store.heldCoins.map((c) => c.mint), [MINT], "the coins found earlier are still listed");
+    assert.ok(env.store.heldInfo.error, "the reason is stored for the panel");
+  });
   await t("held coins: a callout on a held coin is written from its name and description, sent directly and remembered", async () => {
     net.callouts = []; net.calloutReply = null; net.aiBodies = [];
     net.aiBehavior = { "llama-3.3-70b-versatile": "ok" };

@@ -199,8 +199,13 @@ function fitHeader() {
   if (crowded()) top.classList.add("no-tier");
   if (crowded()) top.classList.add("no-ai");
   if (top.scrollWidth > top.clientWidth + 1 || $(".controls").getBoundingClientRect().left < $(".wordmark").getBoundingClientRect().right + 6) top.classList.add("compact");
-  tabs.classList.remove("tight");
-  if (tabs.scrollWidth > tabs.clientWidth + 1) tabs.classList.add("tight");
+  // Four tabs and the balance share one row. When they don't fit: tighter pills, then a gear instead of the word
+  // "Settings", and as the last step the balance moves to a row of its own.
+  tabs.classList.remove("tight", "icons", "wrap");
+  const over = () => tabs.scrollWidth > tabs.clientWidth + 1;
+  if (over()) tabs.classList.add("tight");
+  if (over()) tabs.classList.add("icons");
+  if (over()) tabs.classList.add("wrap");
 }
 addEventListener("resize", () => fitHeader());
 
@@ -268,6 +273,7 @@ function showTab(name) {
   $$(".tab").forEach((el) => el.classList.toggle("on", el.id === `tab-${name}`));
   $("#subtabs").hidden = name !== "settings";
   launchedTabShown(name === "launched");
+  calloutsTabShown(name === "callouts");
 }
 $$(".tabs button[data-tab]").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
 
@@ -798,47 +804,86 @@ $("#deploys").addEventListener("click", async (e) => {
   try { await send({ type: "sell", id: d.id }); } catch (err) { toast(err.message, 4000); }
 });
 
-// ---------------- other coins you hold (for callouts) ----------------
+// ---------------- Callouts tab: every pump.fun coin you hold ----------------
 const shortAddr = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : "");
+const validAddr = (a) => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a);
+// Coins launched here that are live and still held. Their callout texts know the post the coin came from.
+const ownHeld = () => deploys.filter((d) => !d.dryRun && d.ok && d.mint && d.signature && !d.sold && d.holding !== 0);
+function calloutRow(c, own) {
+  const thumb = c.image ? `<img class="dep-img" src="${esc(c.image)}" alt="" referrerpolicy="no-referrer"/>` : `<span class="dot"></span>`;
+  const title = c.ticker || c.name ? `$${esc(c.ticker || "?")} <span class="muted">${esc(c.name || "")}</span>` : `<span class="muted">${esc(shortAddr(c.mint))}</span>`;
+  const amount = own ? c.holding : c.amount;
+  const hold = amount != null ? t("Holding {n} tokens", { n: fmtTokens(amount) }) : t("Holding: checking…");
+  const where = own ? t("launched here") : c.wallet && c.wallet !== walletPub ? t("in {wallet}", { wallet: shortAddr(c.wallet) }) : "";
+  return `<div class="dep">${thumb}<div class="dep-main">
+    <div class="dep-title">${title}</div>
+    <div class="dep-meta hold">${esc(hold)}${where ? ` · <span class="muted">${esc(where)}</span>` : ""}</div>
+    ${c.calledAt ? `<div class="dep-meta">${esc(t("Called out {ago}", { ago: agoText(c.calledAt) }))}${c.calloutUrl ? ` · <a target="_blank" href="${esc(c.calloutUrl)}">${esc(t("view"))}</a>` : ""}</div>` : ""}
+    <div class="dep-actions"><a class="mini axiom" target="_blank" href="${esc(coinUrl(settings.openIn, c.mint))}">${esc(t("Open in {site}", { site: platformOf(settings.openIn).label }))}</a><button class="mini call" data-call="${esc(c.id)}">${esc(c.calledAt ? t("Call out again") : t("Callout"))}</button></div>
+  </div></div>`;
+}
 function renderHeld() {
   const root = $("#held");
   if (!root) return;
-  if (settings.dryRun) { root.innerHTML = ""; return; } // a callout is always real, so the list only shows in LIVE mode
+  const own = ownHeld();
+  const total = own.length + heldCoins.length;
+  const count = total ? `(${total})` : "";
+  if ($("#callCount").textContent !== count) { $("#callCount").textContent = count; fitHeader(); }
   const scanning = root.dataset.busy === "1";
-  const head = `<div class="feed-head held-head"><span class="muted">${esc(t("Other coins you hold"))}${heldCoins.length ? ` (${heldCoins.length})` : ""}</span><button class="link" id="heldScan" ${scanning ? "disabled" : ""}>${scanning ? `<span class="spin"></span>` : ""}${esc(t("Refresh"))}</button></div>`;
-  let body;
-  if (!heldCoins.length) {
-    const why = heldInfo?.error === "no-wallet" ? t("No wallet yet. Create one under Settings → Account.")
+  const when = heldInfo?.at ? ` · ${t("checked {ago}", { ago: agoText(heldInfo.at) })}` : "";
+  const head = `<div class="feed-head held-head"><span class="muted">${esc(t("Coins you hold"))}${total ? ` (${total})` : ""}${esc(when)}</span><button class="link" id="heldScan" ${scanning ? "disabled" : ""}>${scanning ? `<span class="spin"></span>` : ""}${esc(t("Refresh"))}</button></div>`;
+  let body = own.map((d) => calloutRow(d, true)).join("") + heldCoins.map((c) => calloutRow(c, false)).join("");
+  if (!total) {
+    const why = scanning ? t("Looking for pump.fun coins in your wallet…")
+      : heldInfo?.error === "no-wallet" ? t("No wallet to read yet. Create your Hatchr wallet under Settings → Account, or fill in the wallet you use on pump.fun above.")
       : heldInfo?.error ? `${t("Couldn't read the wallet:")} ${heldInfo.error}`
-      : heldInfo ? t("No other pump.fun coins in your wallet.") : t("Press Refresh to look for pump.fun coins in your wallet.");
-    body = `<div class="held-empty muted">${esc(why)} ${esc(t("Do you use another wallet on pump.fun? Add its address under Settings → Launch → Callouts."))}</div>`;
-  } else {
-    body = heldCoins.map((c) => {
-      const thumb = c.image ? `<img class="dep-img" src="${esc(c.image)}" alt="" referrerpolicy="no-referrer"/>` : `<span class="dot"></span>`;
-      const title = c.ticker || c.name ? `$${esc(c.ticker || "?")} <span class="muted">${esc(c.name || "")}</span>` : `<span class="muted">${esc(shortAddr(c.mint))}</span>`;
-      return `<div class="dep">${thumb}<div class="dep-main">
-        <div class="dep-title">${title}</div>
-        <div class="dep-meta hold">${esc(t("Holding {n} tokens", { n: fmtTokens(c.amount) }))}${c.wallet && c.wallet !== walletPub ? ` · ${esc(t("in {wallet}", { wallet: shortAddr(c.wallet) }))}` : ""}</div>
-        ${c.calledAt ? `<div class="dep-meta">${esc(t("Called out {ago}", { ago: agoText(c.calledAt) }))}${c.calloutUrl ? ` · <a target="_blank" href="${esc(c.calloutUrl)}">${esc(t("view"))}</a>` : ""}</div>` : ""}
-        <div class="dep-actions"><a class="mini axiom" target="_blank" href="${esc(coinUrl(settings.openIn, c.mint))}">${esc(t("Open in {site}", { site: platformOf(settings.openIn).label }))}</a><button class="mini call" data-held="${esc(c.id)}">${esc(t("Callout"))}</button></div>
-      </div></div>`;
-    }).join("");
+      : heldInfo ? t("No pump.fun coins found. If you hold coins in another wallet, fill in its address above.")
+      : t("Press Refresh to look for pump.fun coins in your wallet.");
+    body = `<div class="held-empty muted">${esc(why)}</div>`;
+  } else if (heldInfo?.error && heldInfo.error !== "no-wallet") {
+    body = `<div class="held-empty err">${esc(t("Couldn't read the wallet:"))} ${esc(heldInfo.error)}</div>` + body;
   }
   root.innerHTML = head + body;
+  // the wallet box above the list is fixed markup, so typing in it is never interrupted by a refresh
+  const inp = $("#callWallet");
+  if (document.activeElement !== inp && inp.dataset.dirty !== "1") inp.value = settings.calloutWallet || "";
+  $("#callWalletNote").textContent = walletPub
+    ? t("Your Hatchr wallet {wallet} is always read. Add the address of another wallet here and its coins are listed too. An address can only be looked at, never spent from.", { wallet: shortAddr(walletPub) })
+    : t("Paste the public address of the wallet that holds your coins. An address can only be looked at, never spent from.");
 }
 async function scanHeld() {
   const root = $("#held");
-  if (!root || settings.dryRun || root.dataset.busy === "1") return;
+  if (!root || root.dataset.busy === "1") return;
   root.dataset.busy = "1"; renderHeld();
   try { await send({ type: "scanHeld" }); } catch (err) { toast(err.message, 4000); }
   root.dataset.busy = ""; renderHeld();
 }
 $("#held").addEventListener("click", (e) => {
   if (e.target.closest("#heldScan")) return scanHeld();
-  const b = e.target.closest("[data-held]");
-  const c = b && heldCoins.find((x) => x.id === b.dataset.held);
+  const b = e.target.closest("[data-call]");
+  const c = b && (heldCoins.find((x) => x.id === b.dataset.call) || ownHeld().find((x) => x.id === b.dataset.call));
   if (c) calloutModal(c);
 });
+$("#callWallet").addEventListener("input", (e) => { e.target.dataset.dirty = "1"; });
+async function saveCallWallet() {
+  const inp = $("#callWallet");
+  const v = inp.value.trim();
+  if (v && !validAddr(v)) return toast(t("That is not a Solana wallet address. Copy the address from your wallet or your pump.fun profile."), 5000);
+  try {
+    settings = await send({ type: "saveSettings", patch: { calloutWallet: v } });
+    inp.dataset.dirty = ""; inp.value = v;
+    const field = document.getElementById("s-calloutWallet");
+    if (field) field.value = v;
+    toast(v ? t("Saved. Reading that wallet…") : t("Saved."), 2500);
+    await scanHeld();
+  } catch (err) { toast(err.message, 4000); }
+}
+$("#callWalletSave").addEventListener("click", saveCallWallet);
+$("#callWallet").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); saveCallWallet(); } });
+function calloutsTabShown(on) {
+  if (on && (!heldInfo || Date.now() - (heldInfo.at || 0) > 120000)) scanHeld();
+  if (on) refreshHoldings();
+}
 
 let holdingsTimer = null;
 function refreshHoldings() {
@@ -851,7 +896,6 @@ async function refreshHoldingsNow() {
 function launchedTabShown(on) {
   clearInterval(holdingsTimer);
   if (on) {
-    if (!heldInfo || Date.now() - (heldInfo.at || 0) > 120000) scanHeld();
     refreshHoldings(); refreshRewards();
     holdingsTimer = setInterval(() => { refreshHoldings(); refreshRewards(); }, 30000);
   }
@@ -1945,6 +1989,7 @@ function applyLanguage() {
   renderOnboard();
   renderFeed();
   renderDeploys();
+  renderHeld();
   renderRewards();
   renderSettings();
   renderVanityStatus();
@@ -1967,6 +2012,7 @@ async function load() {
   feed = st.feed || [];
   deploys = st.deploys || [];
   try { walletPub = await send({ type: "walletPub" }); } catch {}
+  renderHeld();
   try { walletArchive = await send({ type: "walletArchive" }); } catch {}
   tokenVote = (await chrome.storage.local.get("tokenVote")).tokenVote || null;
   applyLanguage();
@@ -2008,6 +2054,7 @@ chrome.storage.onChanged.addListener((ch, area) => {
     const before = deploys.filter((d) => d.ok && !d.dryRun).length;
     deploys = ch.deploys.newValue || [];
     renderDeploys();
+    renderHeld();
     renderPnl();
     const soldBefore = (ch.deploys.oldValue || []).filter((d) => d.sold && !d.simulated).length;
     if (deploys.filter((d) => d.ok && !d.dryRun).length !== before || deploys.filter((d) => d.sold && !d.simulated).length !== soldBefore) refreshBalance();
