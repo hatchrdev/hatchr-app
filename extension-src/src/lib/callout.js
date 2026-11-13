@@ -37,23 +37,27 @@ export function builtInCallouts(coin) {
   const from = coin.handle && coin.handle !== "manual" ? `@${coin.handle}` : "";
   const quote = snippet(coin.postText);
   const out = [];
-  if (from && quote) out.push(`Holding ${tk}. It's the ${name} coin from ${from}'s post: "${quote}"`);
-  if (from) out.push(`${name} (${tk}) went live right after ${from} posted. I'm in and holding.`);
-  if (coin.description && coin.description !== coin.postText) out.push(`${tk}: ${snippet(coin.description, 120)} I'm holding.`);
-  out.push(`${tk} is my pick from today's timeline: ${name}. Early and small, and I'm holding. Do your own research.`);
-  out.push(`Calling ${tk} (${name}). I hold it because the story behind it is easy to get and fun to share.`);
+  if (from && quote) out.push(`${from}: "${quote}" and ${tk} was LIVE seconds later. yeah I aped 🔥`);
+  if (from) out.push(`${from} posted, ${tk} dropped, I'M IN. ${name} is cooking rn LFG`);
+  if (coin.description && coin.description !== coin.postText) out.push(`${tk} 👀 ${snippet(coin.description, 110)} aped a bag, no notes`);
+  out.push(`${tk} JUST HIT MY RADAR AND I'M ALREADY IN. ${name} is too funny to fade 🔥`);
+  out.push(`aped ${tk}. ${name}. that's it, that's the callout`);
+  out.push(`${name} (${tk}) is cooking in the trenches rn and I got my bag. LFG`);
   return [...new Set(out.map((x) => cleanCallout(x)))].filter((x) => x && !makesPromise(x)).slice(0, 3);
 }
 
-const SYSTEM = `You write callouts for pump.fun. A callout is a short note a holder sends to their followers saying why they hold a memecoin.
+const SYSTEM = `You write pump.fun callouts in the voice of a real trenches degen. A callout is a short note a holder blasts to their followers about a memecoin they hold.
 Write 3 different callouts for the coin described by the user.
+Voice:
+- A real person typing fast on a phone. Not a brand, not an assistant, not a press release. Raw, loud, funny.
+- Crypto-Twitter slang is welcome: aped, bags, cooking, LFG, send it, the trenches, CT, no way, bro, ngl, rn.
+- Mix the energy: one mostly in CAPS, one lowercase and lazy, one in between. Short punches. Fragments are fine. 0 to 2 emojis each.
+- Never formal. Do not use: "pick", "timeline", "do your own research", "the story behind it", "early and small", "exciting", "community", "utility", "potential", "project".
 Rules:
-- 1 or 2 sentences each, under 200 characters.
-- Sound like a real trader talking to friends: energetic, confident, fun. Hype is fine.
-- Say what the coin is about and why it is timely, using ONLY the facts given. Do not invent facts, news, partnerships or endorsements.
-- Never promise or predict price, profit, multiples or percentages. No "100x", "guaranteed", "can't lose", "easy money", "will moon".
-- No hashtags, no links, at most one emoji, no quotation marks around the whole text.
-- Each of the 3 takes a different angle (the story, the timing, the meme).
+- 1 or 2 short sentences each, under 160 characters.
+- Use the coin's $TICKER once. Riff on what the coin is actually about, using ONLY the facts given. Do not invent facts, news, partnerships or endorsements.
+- Never promise or predict price, profit, multiples or percentages. No "100x", "guaranteed", "can't lose", "easy money", "will moon", "not a rug".
+- No hashtags, no links, no quotation marks around the whole text.
 Reply ONLY with JSON: {"callouts":["","",""]}`;
 
 function describe(coin) {
@@ -82,7 +86,9 @@ export async function calloutTexts(settings, coin, { useAi = true } = {}) {
   if (!useAi) return { texts: builtIn, by: "built-in" };
   let error = null;
   try {
-    const r = await chat(settings, { model: settings.aiModel, system: SYSTEM, user: describe(coin), maxTokens: 400, temperature: 0.9, json: true });
+    // models that think first need room for the thinking, or the answer comes back empty
+    const reasoning = /gpt-oss|qwen3|deepseek-r1|o\d|reason/i.test(settings.aiModel || "");
+    const r = await chat(settings, { model: settings.aiModel, system: SYSTEM, user: describe(coin), maxTokens: reasoning ? 1200 : 500, temperature: 1, json: true, reasoning });
     if (r.usage && settings.onAiUsage) settings.onAiUsage(settings.aiModel, r.usage);
     if (r.ok) {
       const texts = [...new Set(parseCallouts(r.content).map((x) => cleanCallout(x)))].filter((x) => x.length >= 12 && !makesPromise(x)).slice(0, 3);
