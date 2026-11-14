@@ -7,13 +7,13 @@ import { makeBackup, openBackup } from "./lib/backup.js";
 import { mergePulse, buildMeta } from "./lib/meta.js";
 import { squareFromFrame, aiPickFrame, bestByScore } from "./lib/videoframe.js";
 import { OLD_PROMPTS, DEFAULT_PROMPT } from "./lib/settings.js";
-import { launch, parseSecret, getBalanceSol, testPinata, rpc, sellAll, getTokenBalance, axiomUrl, getCreatorRewards, claimCreatorRewards, newWallet, secretAsArray, simulateLaunch, simulateSell } from "./lib/deploy.js";
+import { launch, parseSecret, getBalanceSol, testPinata, rpc, sellAll, getTokenBalance, axiomUrl, getCreatorRewards, claimCreatorRewards, newWallet, secretAsArray, simulateLaunch, simulateSell, sendTx, simulateTx, waitConfirm } from "./lib/deploy.js";
 import { fetchChannel } from "./lib/telegram.js";
 import { coinUrl } from "./lib/platforms.js";
 import { badChars } from "./lib/vanity.js";
 import { loadTokenConfig } from "./lib/token.js";
 import { calloutTexts, validMint } from "./lib/callout.js";
-import { PublicKey as PublicKeyStr } from "@solana/web3.js";
+import { PublicKey as PublicKeyStr, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 
 // settings plus a hook so AI naming can save a working model it switched to
@@ -659,6 +659,7 @@ async function autoClaimCheck() {
 // Every coin created on pump.fun and every coin that graduates, so the AI knows the meta
 // even without an Axiom Pulse tab. One connection only (PumpPortal's rule).
 let pumpWs = null;
+let pumpForMeta = true; // false when the connection is only open for the callout automode
 let pumpRetry = 0;
 let pumpNextTry = 0;
 let pumpBuf = [];
@@ -671,7 +672,9 @@ const wantPump = (s) => watchingOn(s) && s.pumpMeta !== false && !!s.aiEnabled &
 async function ensurePumpSocket() {
   if (typeof WebSocket === "undefined") return;
   const s = await getSettingsRaw();
-  if (!wantPump(s)) {
+  pumpForMeta = wantPump(s);
+  // the callout automode (callout-auto.js) listens on this same connection: PumpPortal allows one
+  if (!pumpForMeta && !globalThis.HatchrCalloutAuto?.wantsStream()) {
     if (pumpWs) { const ws = pumpWs; pumpWs = null; try { ws.close(); } catch {} }
     return;
   }
@@ -682,11 +685,13 @@ async function ensurePumpSocket() {
     pumpRetry = 0;
     ws.send(JSON.stringify({ method: "subscribeNewToken" }));
     ws.send(JSON.stringify({ method: "subscribeMigration" }));
+    try { globalThis.HatchrCalloutAuto?.onOpen(); } catch {}
   };
   ws.onmessage = (e) => {
     let m;
     try { m = JSON.parse(e.data); } catch { return; }
-    onPumpMessage(m);
+    try { globalThis.HatchrCalloutAuto?.onStream(m); } catch (err) { console.warn("callout automode", err); }
+    if (pumpForMeta) onPumpMessage(m);
   };
   const gone = () => {
     if (pumpWs !== ws) return;
@@ -1236,7 +1241,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case "calloutCreate":
       // only Hatchr's own panel may write or send a callout, never a page script
       if (sender?.id !== chrome.runtime.id || sender?.url !== chrome.runtime.getURL("sidepanel.html")) { sendResponse({ ok: false, error: "Not allowed from here" }); return false; }
-      return reply(msg.type === "calloutTexts" ? calloutFor(msg.id) : createCallout(msg)), true;
+      return reply(msg.type === "calloutTexts" ? (globalThis.HatchrCalloutAuto?.windowTexts ? globalThis.HatchrCalloutAuto.windowTexts(msg.id, calloutFor) : calloutFor(msg.id)) : createCallout(msg)), true;
     case "rewards":
       return reply(readRewards()), true;
     case "claimRewards":
@@ -1264,6 +1269,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return reply((async () => {
         const { settings, walletSecret, deploys = [], onboardSeen, walletArchive = [] } = await chrome.storage.local.get(["settings", "walletSecret", "deploys", "onboardSeen", "walletArchive"]);
         const data = { settings: settings || {}, walletSecret: walletSecret || "", walletArchive, onboardSeen: !!onboardSeen };
+        // the callout automode's settings, filters and texts (Settings → Callouts) and the coins hidden on the Callouts tab
+        const { coAuto, coHidden = [] } = await chrome.storage.local.get(["coAuto", "coHidden"]);
+        data.calloutAuto = globalThis.HatchrCalloutFilters ? globalThis.HatchrCalloutFilters.cleanConfig(coAuto) : null;
+        data.calloutHidden = coHidden;
         if (msg.includeHistory !== false) data.deploys = deploys.filter((d) => !d.pending);
         return makeBackup(data, { password: msg.password || "", extVersion: chrome.runtime.getManifest().version });
       })()), true;
@@ -1287,6 +1296,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           patch.walletArchive = [...walletArchive, ...add].slice(-50);
         }
         if (data.onboardSeen) patch.onboardSeen = true;
+        // callout automode: restored with both switches off, the way the launcher arrives paused
+        if (data.calloutAuto && typeof data.calloutAuto === "object" && globalThis.HatchrCalloutFilters) patch.coAuto = { ...globalThis.HatchrCalloutFilters.cleanConfig(data.calloutAuto), enabled: false, ownBuys: false };
+        if (Array.isArray(data.calloutHidden)) patch.coHidden = data.calloutHidden.filter((x) => typeof x === "string").slice(0, 5000);
         let added = 0;
         if (Array.isArray(data.deploys) && data.deploys.length) {
           await withLock(async () => {
@@ -1330,7 +1342,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case "holdings":
       return reply(refreshHoldings(msg.ids || [])), true;
     case "scanHeld":
-      return reply(scanHeld()), true;
+      return reply(globalThis.HatchrCalloutAuto?.scanHeld ? globalThis.HatchrCalloutAuto.scanHeld(scanHeld) : scanHeld()), true;
     case "openAxiom":
       chrome.tabs.create({ url: msg.platform ? coinUrl(msg.platform, msg.mint) : axiomUrl(msg.mint), active: true }).then(() => sendResponse({ ok: true })).catch((e) => sendResponse({ ok: false, error: e.message }));
       return true;
@@ -1475,4 +1487,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     default:
       return false;
   }
+});
+
+// ---------- what the callout automode may use ----------
+// callout-auto.js (a plain script loaded next to this file, like callout-client.js) runs the automatic callouts.
+// It gets exactly these functions and nothing else.
+globalThis.HatchrCore = Object.freeze({
+  settings: getSettings, secret: getSecret, keypair: parseSecret, rpc, balance: getBalanceSol, tokenBalance: getTokenBalance,
+  send: sendTx, simulate: simulateTx, confirm: waitConfirm, Tx: VersionedTransaction, PublicKey: PublicKeyStr,
+  texts: calloutTexts, useAi: aiReady, saveHeld: updateHeld, lock: withLock, solPrice, notify, watching: watchingOn,
+  socket: () => pumpWs, reconnect: ensurePumpSocket, scanHeld,
+  isDesktop: chrome.runtime.id === "hatchr-desktop",
 });

@@ -61,6 +61,8 @@ jobs:
       - run: npm test
       - if: matrix.name == 'linux'
         run: xvfb-run -a npx electron tests/electron-callouts.cjs --no-sandbox
+      - if: matrix.name == 'linux'
+        run: xvfb-run -a npx electron tests/electron-callout-auto.cjs --no-sandbox
       # app/ holds the built Chrome extension (committed), so there is no sync step here
       - run: npx electron-builder ${{ matrix.target }} --publish never
         env:
@@ -117,7 +119,7 @@ jobs:
             | Linux (64-bit) | **Hatchr-linux.AppImage** or Hatchr-linux.deb |
             | Chrome / Chromium (unpacked) | **Hatchr-extension.zip** |
 
-            Direct callouts: send from Hatchr without opening Pump.fun for every post.
+            Automatic callouts (off by default): call out a coin right after you buy it, or let Hatchr buy coins that pass your own filters and call them out. Direct callouts: send from Hatchr without opening Pump.fun for every post.
             In the desktop app, use the Pump.fun button to sign in once; this login is separate from Chrome.
             Existing Pump.fun eligibility and holding requirements still apply.
 

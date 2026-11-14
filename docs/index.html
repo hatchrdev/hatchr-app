@@ -620,6 +620,7 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
     <h3 class="tk-sub">Judge it by what ships</h3>
     <p>The last releases, straight from the changelog.</p>
     <ul class="shipped">
+      <li><span class="v">3.6.7</span><span class="what">Automatic callouts: call out a coin right after you buy it, or let Hatchr buy coins that pass your own filters and call them out. Your own callout texts, timing and market-cap rules, hidden coins, and all of it in the backup.</span></li>
       <li><span class="v">3.5.9</span><span class="what">Direct Pump.fun callouts from Hatchr, with saved drafts, clear status messages, and support for the Windows, Mac and Linux apps.</span></li>
       <li><span class="v">3.4.2</span><span class="what">PnL cards post to X with the picture attached, smoother first-run screen, clearer toolbar icon.</span></li>
       <li><span class="v">3.4.1</span><span class="what">Lighter, faster side panel and one-click desktop download from the header.</span></li>
@@ -761,7 +762,7 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
         <tbody>
           <tr><td>Helius</td><td>Your Solana RPC: sends transactions, reads balances, holdings and rewards. The free public RPC blocks browser extensions.</td><td><span class="pill">for LIVE</span></td><td>Free plan</td><td><a href="https://www.helius.dev" target="_blank" rel="noopener">helius.dev</a></td></tr>
           <tr><td>Pinata</td><td>Stores each coin's picture and details on IPFS, which pump.fun reads.</td><td><span class="pill">for LIVE</span></td><td>Free plan</td><td><a href="https://app.pinata.cloud/register" target="_blank" rel="noopener">pinata.cloud</a></td></tr>
-          <tr><td>PumpPortal</td><td>Builds the create, sell and claim transactions (signed in your browser), and streams new and graduating pump.fun coins for the meta.</td><td><span class="pill">built in</span></td><td>0.5% fee on trades it builds; stream free</td><td><a href="https://pumpportal.fun" target="_blank" rel="noopener">pumpportal.fun</a></td></tr>
+          <tr><td>PumpPortal</td><td>Builds the create, buy, sell and claim transactions (signed in your browser), and streams new and graduating pump.fun coins for the meta and the automatic callouts.</td><td><span class="pill">built in</span></td><td>0.5% fee on trades it builds; stream free</td><td><a href="https://pumpportal.fun" target="_blank" rel="noopener">pumpportal.fun</a></td></tr>
           <tr><td>pump.fun</td><td>Where your coins are created and traded.</td><td><span class="pill">built in</span></td><td>Network and rent fees per launch</td><td><a href="https://pump.fun" target="_blank" rel="noopener">pump.fun</a></td></tr>
           <tr><td>Axiom</td><td>X tracker for posts, Pulse page for the meta, and a place to open your coins.</td><td><span class="pill opt">recommended</span></td><td>Free with an Axiom account</td><td><a href="https://axiom.trade" target="_blank" rel="noopener">axiom.trade</a></td></tr>
           <tr><td>X</td><td>Posts from the tabs and lists you keep open.</td><td><span class="pill opt">optional</span></td><td>Free</td><td><a href="https://x.com" target="_blank" rel="noopener">x.com</a></td></tr>
@@ -863,7 +864,7 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
 
   <section class="read legal" id="privacy" aria-labelledby="privacy-h">
     <div class="head"><h2 id="privacy-h">Privacy policy</h2></div>
-    <p class="updated">Effective 10 November 2026 · Hatchr 3.5</p>
+    <p class="updated">Effective 14 November 2026 · Hatchr 3.6</p>
     <div class="callout">
       <p><strong>The short version:</strong> Hatchr has no servers and collects nothing. Your settings, API keys and wallet keys stay in your own browser. Transactions are signed on your device. The only data that leaves your browser goes directly to the services you set up yourself, so they can do their part of the job.</p>
     </div>
@@ -875,7 +876,8 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
       <li>The private key of your current wallet and of wallets you replaced or removed, used only to sign your own transactions on your device.</li>
       <li>A vanity wallet that was found but not used yet, until you use or discard it.</li>
       <li>Recent posts in your feed, coins you launched, small pictures of them, and your claimed creator rewards, which are also used to work out your PnL.</li>
-      <li>A short-lived list of coin names seen on pump.fun and Axiom Pulse in the last few hours, used to follow the meta.</li>
+      <li>A short-lived list of coin names seen on pump.fun and Axiom Pulse in the last few hours, used to follow the meta and to spot copies.</li>
+      <li>Your automatic-callout settings, filters and callout texts, the coins you hid on the Callouts tab, and a short activity list of what the automatic callouts did.</li>
       <li>The last SOL price, if you show amounts in USD, EUR or GBP.</li>
     </ul>
     <p>Wallet keys are stored without encryption inside the extension, like the rest of its settings. Use a separate wallet that only holds what you plan to spend.</p>
@@ -887,10 +889,11 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
       <table>
         <thead><tr><th>Service</th><th>What is sent</th><th>Why</th></tr></thead>
         <tbody>
-          <tr><td>PumpPortal</td><td>Your wallet's public address, the coin's name, ticker and metadata link, trade amounts</td><td>Builds the create, sell and claim transactions, which Hatchr signs locally</td></tr>
-          <tr><td>PumpPortal data stream</td><td>Only a request to receive new and graduating coins; nothing about you</td><td>Follows the pump.fun meta. Runs only while AI naming and the meta are on.</td></tr>
-          <tr><td>Pump.fun callouts</td><td>The coin address, your callout text, and the Pump.fun login cookies managed by your browser or the desktop app</td><td>Publishes a callout only when you press Send callout. The text is public. Hatchr does not copy the session cookies into its settings or backups.</td></tr>
-          <tr><td>Your Solana RPC (e.g. Helius)</td><td>Signed transactions; balance, token and reward lookups for your wallet; name lookups for graduated coins</td><td>Sends transactions and reads balances</td></tr>
+          <tr><td>PumpPortal</td><td>Your wallet's public address, the coin's name, ticker and metadata link, trade amounts</td><td>Builds the create, buy, sell and claim transactions, which Hatchr signs locally. Buys are only built by the automatic callouts, when you switch them on.</td></tr>
+          <tr><td>PumpPortal data stream</td><td>A request to receive new and graduating coins. With automatic callouts on: also the addresses of coins whose trades Hatchr follows, and, for "call out my own buys", your wallet's public address</td><td>Follows the pump.fun meta, measures coins against your callout filters and notices your own buys. Runs only while AI naming and the meta, or automatic callouts, are on.</td></tr>
+          <tr><td>Pump.fun callouts</td><td>The coin address, your callout text, and the Pump.fun login cookies managed by your browser or the desktop app</td><td>Publishes a callout when you press Send callout, or by itself if you switched automatic callouts on (off by default). The text is public. Hatchr does not copy the session cookies into its settings or backups.</td></tr>
+          <tr><td>Your Solana RPC (e.g. Helius)</td><td>Signed transactions; balance, token, transaction and reward lookups for your wallet; name lookups for coins; with "call out my own buys" on, a live subscription to your wallet's public address</td><td>Sends transactions, reads balances and notices your own buys</td></tr>
+          <tr><td>The coin's own metadata file (usually an IPFS gateway such as ipfs.io)</td><td>Only a request for that public file; nothing about you</td><td>Reads a coin's links and description for your callout filters. Only while automatic buying is on and a filter needs them.</td></tr>
           <tr><td>Pinata (IPFS)</td><td>The coin image and metadata, including the link to the source post</td><td>Coin images must be public. Anything uploaded to IPFS is public and permanent.</td></tr>
           <tr><td>Your AI provider</td><td>The text of a post, its context, and a short summary of current coin names</td><td>Suggests a name, ticker and score. Optional.</td></tr>
           <tr><td>Cloudflare Workers AI or OpenAI</td><td>An image description; frames from a video post for picking the best one</td><td>Generates or chooses the coin picture. Optional.</td></tr>

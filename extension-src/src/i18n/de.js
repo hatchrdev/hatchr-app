@@ -28,6 +28,7 @@ export default {
   "Add credit under Billing.": "Lade unter Billing Guthaben auf.",
   "Address copied": "Adresse kopiert",
   "Alerts": "Hinweise",
+  "Auto callouts": "Automatische Callouts",
   "Allow the extension to talk to Ollama: set the environment variable OLLAMA_ORIGINS to chrome-extension://* and restart Ollama. (Mac: launchctl setenv OLLAMA_ORIGINS \"chrome-extension://*\". Windows: System settings → Environment variables.)": "Erlaube der Erweiterung, mit Ollama zu sprechen: setz die Umgebungsvariable OLLAMA_ORIGINS auf chrome-extension://* und starte Ollama neu. (Mac: launchctl setenv OLLAMA_ORIGINS \"chrome-extension://*\". Windows: Systemeinstellungen → Umgebungsvariablen.)",
   "Already have a burner in Phantom? Phantom → menu (☰) → your account → Show Private Key → enter your password → copy, then paste it under \"Import a wallet\".": "Schon eine Burner-Wallet in Phantom? Phantom → Menü (☰) → dein Konto → Show Private Key → Passwort eingeben → kopieren, dann unter \"Wallet importieren\" einfügen.",
   "Always gradient card": "Immer Farbverlauf-Karte",

@@ -59,7 +59,13 @@
           button.addEventListener("click", () => { text.value = suggestion; refresh(); });
           options.appendChild(button);
         }
-        if (response.by !== "ai") {
+        if (response.by === "custom") {
+          // Your own texts, saved under Settings → Callouts.
+          const info = document.createElement("div");
+          info.className = "muted co-wait";
+          info.textContent = t(response.error ? "The AI didn't answer, so these are your own texts (Settings → Callouts)." : "Your own texts. Change them under Settings → Callouts.");
+          options.appendChild(info);
+        } else if (response.by !== "ai") {
           const info = document.createElement("div");
           info.className = "muted co-wait";
           info.textContent = t(response.error ? "The AI didn't answer, so these are built-in texts." : "Built-in texts. Turn on AI naming (Settings → AI) for texts written for each coin.");

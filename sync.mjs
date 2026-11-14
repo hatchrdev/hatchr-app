@@ -10,7 +10,9 @@ rmSync(dst, { recursive: true, force: true });
 mkdirSync(dst, { recursive: true });
 // p uses backslashes on Windows, so compare path parts, not the text
 cpSync(src, dst, { recursive: true, filter: (p) => !p.split(/[\\/]/).includes("source") && !p.endsWith("README.md") });
-const callouts = existsSync(new URL("./callout-client.js", dst)) ? '<script src="callout-client.js"></script>' : '';
+// the plain scripts the extension's service worker loads with importScripts (see extension-src/build.mjs), in the same order:
+// the callout sender, then the callout automode (its filters first)
+const callouts = ["callout-client.js", "callout-filters.js", "callout-auto.js"].filter((f) => existsSync(new URL(`./${f}`, dst))).map((f) => `<script src="${f}"></script>`).join("");
 writeFileSync(new URL("./background.html", dst), `<!doctype html><meta charset="utf-8"><title>Hatchr engine</title>${callouts}<script src="background.js"></script>\n`);
 // the tests that check the shipped files (run by `npm test` here and in the release workflow)
 mkdirSync(new URL("./tests/", dst), { recursive: true });

@@ -819,7 +819,7 @@ function calloutRow(c, own) {
     <div class="dep-title">${title}</div>
     <div class="dep-meta hold">${esc(hold)}${where ? ` · <span class="muted">${esc(where)}</span>` : ""}</div>
     ${c.calledAt ? `<div class="dep-meta">${esc(t("Called out {ago}", { ago: agoText(c.calledAt) }))}${c.calloutUrl ? ` · <a target="_blank" href="${esc(c.calloutUrl)}">${esc(t("view"))}</a>` : ""}</div>` : ""}
-    <div class="dep-actions"><a class="mini axiom" target="_blank" href="${esc(coinUrl(settings.openIn, c.mint))}">${esc(t("Open in {site}", { site: platformOf(settings.openIn).label }))}</a><button class="mini call" data-call="${esc(c.id)}">${esc(c.calledAt ? t("Call out again") : t("Callout"))}</button></div>
+    <div class="dep-actions"><a class="mini axiom" target="_blank" href="${esc(coinUrl(settings.openIn, c.mint))}">${esc(t("Open in {site}", { site: platformOf(settings.openIn).label }))}</a><button class="mini call" data-call="${esc(c.id)}">${esc(c.calledAt ? t("Call out again") : t("Callout"))}</button><button class="mini ca-eye" data-hide="${esc(c.mint)}" title="Hide this coin" aria-label="Hide this coin"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
   </div></div>`;
 }
 function renderHeld() {
@@ -915,6 +915,7 @@ const SUBS = [
   ["ai", "🤖", "AI"],
   ["images", "🖼️", "Images"],
   ["auto", "⚡", "Auto"],
+  ["callauto", "📣", "Callouts"], // the callout automode; its form is drawn by callout-auto-ui.js
   ["alerts", "🔔", "Alerts"],
   ["language", "🌐", "Language"],
 ];
@@ -1076,6 +1077,7 @@ const SCHEMA = [
     { k: "soundVolume", label: "Bell volume (0-100)", type: "number", step: "5" },
   ] },
 
+  { sub: "callauto", title: "Auto callouts", custom: "callauto" },
   { sub: "language", title: "Language", custom: "language" },
 ];
 
@@ -1154,6 +1156,7 @@ function sectionHtml(sec) {
       <div id="backupOut" class="help"></div>`);
   }
   if (sec.custom === "token") return wrap(`<div id="tokenBox"></div>`);
+  if (sec.custom === "callauto") return wrap(`<div id="coAutoBox"></div>`); // filled in by callout-auto-ui.js, which has its own Save
   if (sec.custom === "votes") return wrap(`<div id="votesBox"></div>`);
   if (sec.custom === "language") {
     return wrap(`<div class="fld"><label for="s-language">${esc(t("Language"))}</label>
@@ -1182,8 +1185,8 @@ function showSub(id) {
   $$("#settingsForm .sec").forEach((s) => { s.hidden = s.dataset.sub !== subTab; });
   // wide layout: one section gets a centered column, two or more sit side by side
   $("#settingsForm").dataset.n = String($$("#settingsForm .sec").filter((s) => !s.hidden).length);
-  $("#saveBtn").hidden = subTab === "account" || subTab === "language" || subTab === "token";
-  $("#testBtn").hidden = subTab === "token";
+  $("#saveBtn").hidden = subTab === "account" || subTab === "language" || subTab === "token" || subTab === "callauto";
+  $("#testBtn").hidden = subTab === "token" || subTab === "callauto";
   if (subTab === "token") refreshToken();
   $("#testOut").innerHTML = "";
   hideGuide(true);
@@ -1827,7 +1830,7 @@ function renderSettings() {
     try {
       const file = await send({ type: "exportBackup", password, includeHistory: $("#backupHistory").checked });
       download(`hatchr-backup-${new Date().toISOString().slice(0, 10)}${file.encrypted ? "-locked" : ""}.json`, JSON.stringify(file, null, 2));
-      $("#backupOut").textContent = file.encrypted ? t("Exported (password-protected). Keep the password; it can't be recovered.") : t("Exported (no password). Keep the file private.");
+      $("#backupOut").textContent = (file.encrypted ? t("Exported (password-protected). Keep the password; it can't be recovered.") : t("Exported (no password). Keep the file private.")) + (globalThis.HatchrBackupNote?.(file) || "");
     } catch (e) { toast(e.message, 5000); }
   });
   $("#importBtn").addEventListener("click", () => $("#importFile").click());

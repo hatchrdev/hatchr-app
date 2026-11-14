@@ -38,6 +38,28 @@ The app is not signed by Microsoft or Apple yet, so the first start needs one ex
 - `docs/` is the hatchr.pro website.
 - Bump the version in `extension-src/src/manifest.json`, `extension-src/package.json` and the root `package.json` together.
 
+## Automatic callouts (3.6)
+
+Two switches under **Settings → Callouts**, both off by default and both following TEST / LIVE:
+
+- **Call out a coin right after I buy it myself.** Hatchr notices a buy by the Hatchr wallet (or the wallet entered on
+  the Callouts tab) from pump.fun's stream, from a live subscription on your own RPC, or from a check of the wallet's
+  latest transactions. Only a transaction your wallet signed and that added a pump.fun coin counts, so coins that are
+  sent to you are never called.
+- **Buy and call out automatically.** New pump.fun coins are measured against Hatchr's own filters (separate from
+  Axiom's; an Axiom Pulse filter export can be imported), with a guard against copies. A coin that passes is bought
+  for a small amount, the holding is checked, and the callout is posted. Hatchr never sells here.
+
+Also there: your own callout texts, a delay and a minimum market cap before a callout goes out, an eye to hide coins
+on the Callouts tab, and all of these settings in the backup.
+
+Code: `extension-src/src/callout-filters.js` (filters, copy guard, Axiom import; pure logic), `callout-auto.js` (the
+engine, running next to the background script, which hands it a fixed set of functions as `HatchrCore`) and
+`callout-auto-ui.js` (settings form and status card). They are plain scripts like `callout-client.js`, so the
+extension's service worker (`importScripts`), the side panel and the desktop app's `background.html` (see `sync.mjs`)
+load the very same files. Tests: `extension-src/test/callout-auto/` (run by `npm test` there, against a stand-in
+wallet, RPC, stream and callout API) and `tests/electron-callout-auto.cjs` (the real desktop app, offline).
+
 ## Direct Pump.fun callouts (3.5.9)
 
 The callout composer posts directly through the Pump.fun API. In the extension,
@@ -54,7 +76,8 @@ is required. Ambiguous responses are not automatically retried.
 
 Run `npm test` for the request/transport tests. `npx electron
 tests/electron-callouts.cjs --no-sandbox` runs an isolated, offline desktop smoke
-test; it intercepts HTTPS and never posts a live callout.
+test; it intercepts HTTPS and never posts a live callout. `tests/electron-callout-auto.cjs`
+does the same for the automatic callouts.
 On a Linux build machine without a desktop, run it under `xvfb-run -a`.
 
 Pull requests build all desktop targets without publishing. Updating `main`

@@ -57,11 +57,19 @@ export function simulateSell(tokens, devBuySol, { priorityFee = 0.000001, closeA
 }
 
 export async function rpc(url, method, params = []) {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method, params }),
-  });
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // an RPC that never answers must not leave a button spinning forever
+      signal: typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(25_000) : undefined,
+      body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method, params }),
+    });
+  } catch (e) {
+    if (e && (e.name === "TimeoutError" || e.name === "AbortError")) throw new Error(`The RPC did not answer within 25 seconds (${method}). Try again; if it keeps happening, use your own Helius RPC URL.`);
+    throw e;
+  }
   if (res.status === 401 || res.status === 403) {
     throw new Error(`RPC blocked the request (${res.status}). The free public Solana RPC refuses browser extensions: get a free Helius RPC URL (helius.dev) and paste it in Settings → Launch → Solana RPC URL.`);
   }
@@ -129,14 +137,14 @@ function toBase64(bytes) {
   return btoa(bin);
 }
 
-async function sendTx(rpcUrl, tx, skipPreflight) {
+export async function sendTx(rpcUrl, tx, skipPreflight) {
   return rpc(rpcUrl, "sendTransaction", [
     toBase64(tx.serialize()),
     { encoding: "base64", skipPreflight: !!skipPreflight, preflightCommitment: "confirmed", maxRetries: 5 },
   ]);
 }
 
-async function simulateTx(rpcUrl, tx) {
+export async function simulateTx(rpcUrl, tx) {
   const r = await rpc(rpcUrl, "simulateTransaction", [
     toBase64(tx.serialize()),
     { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed" },
@@ -146,7 +154,7 @@ async function simulateTx(rpcUrl, tx) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function waitConfirm(rpcUrl, sig, timeoutMs = 75000) {
+export async function waitConfirm(rpcUrl, sig, timeoutMs = 75000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const r = await rpc(rpcUrl, "getSignatureStatuses", [[sig], { searchTransactionHistory: false }]);
