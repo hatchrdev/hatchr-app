@@ -1,20 +1,26 @@
 // Bridge on axiom.trade: receives tweets from content-axiom-main.js and forwards them to the extension.
 (() => {
-  if (window.__t2cAxiomBridge) return;
-  window.__t2cAxiomBridge = true;
+  // After Hatchr is updated, the copy of this script that was already on the page can no longer reach the
+  // extension. The background then injects this script again: it takes over unless the old copy still works.
+  try { if (window.__t2cAxiomBridgeAlive && window.__t2cAxiomBridgeAlive()) return; } catch { /* the old copy is gone */ }
   let alive = true;
+  window.__t2cAxiomBridgeAlive = () => { try { return alive && !!chrome.runtime?.id; } catch { return false; } };
 
   try { chrome.runtime.sendMessage({ type: "hello" }).catch(() => {}); } catch {}
 
-  // Tell the page script what to do: watch at all (the main switch), and keep Axiom's tracker panel open (hidden).
-  // While Hatchr is switched off this bridge goes quiet too: no timer, it only listens for the switch coming back on.
+  // Tell the page script what to do: watch at all, and keep Axiom's tracker panel open (hidden). Posts are read while
+  // Hatchr launches from posts (the Feed's switch) or while CA buy is on; with both off this bridge goes quiet too:
+  // no timer, it only listens for one of them coming back on.
   let pushTimer = null;
   function pushConfig() {
     if (!alive) return;
     try {
-      chrome.storage.local.get("settings").then(({ settings: s }) => {
-        const on = !s || s.watching !== false;
-        const keep = on && (!!s ? s.axiomEnabled !== false && s.axiomKeepTracker !== false : true);
+      chrome.storage.local.get(["settings", "caBuy"]).then(({ settings: s, caBuy: cb }) => {
+        const launch = !s || s.watching !== false;
+        const ca = !!(cb && cb.enabled && Array.isArray(cb.handles) && cb.handles.length);
+        const on = launch || ca;
+        // Axiom only streams tracker posts while its tracker panel is open
+        const keep = (!s || s.axiomKeepTracker !== false) && ((launch && (!s || s.axiomEnabled !== false)) || ca);
         const hide = on && (!!s ? s.axiomHideTracker !== false : true);
         window.postMessage({ __t2c: "axiom-config", on, keep, hide }, location.origin);
         if (on && !pushTimer) pushTimer = setInterval(pushConfig, 5000);
@@ -25,7 +31,7 @@
   pushConfig();
   setTimeout(pushConfig, 1000); // again shortly after, in case the page script was not listening yet
   setTimeout(pushConfig, 4000);
-  try { chrome.storage.onChanged.addListener((ch, area) => { if (area === "local" && ch.settings) pushConfig(); }); } catch {}
+  try { chrome.storage.onChanged.addListener((ch, area) => { if (area === "local" && (ch.settings || ch.caBuy)) pushConfig(); }); } catch {}
   const str = (v, max) => (typeof v === "string" ? v.slice(0, max) : "");
 
   window.addEventListener("message", (e) => {

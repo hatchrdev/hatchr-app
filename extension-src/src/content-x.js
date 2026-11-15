@@ -1,8 +1,9 @@
 // Runs on x.com. Watches the timeline you have open (best: a List with the accounts you track)
 // and sends every new post to the extension. Free, no API key — it just reads your own tab.
 (() => {
-  if (window.__t2cLoaded) return;
-  window.__t2cLoaded = true;
+  // After Hatchr is updated the background injects this script again; it takes over unless the old copy still works.
+  try { if (window.__t2cXAlive && window.__t2cXAlive()) return; } catch { /* the old copy is gone */ }
+  window.__t2cXAlive = () => { try { return alive && !!chrome.runtime?.id; } catch { return false; } };
 
   const seen = new Set();
   let enabled = true;
@@ -40,17 +41,21 @@
   }
   // "watching" is Hatchr's main switch. With it off (or with X tabs off) this script stops completely:
   // it reads no posts, clicks nothing and has no timer or page observer, as if the extension were not there.
-  const apply = (settings) => {
-    if (settings) {
-      enabled = settings.xEnabled !== false && settings.watching !== false;
-      autoLoadNew = settings.xAutoLoadNew !== false;
-    }
+  // X tabs are read while Hatchr launches from posts (the Feed's switch) or while CA buy is on.
+  let lastSettings = null, lastCa = null;
+  const apply = (settings, ca) => {
+    if (settings !== undefined) lastSettings = settings;
+    if (ca !== undefined) lastCa = ca;
+    const s = lastSettings, caOn = !!(lastCa && lastCa.enabled && Array.isArray(lastCa.handles) && lastCa.handles.length);
+    enabled = (!s || s.xEnabled !== false) && (!s || s.watching !== false || caOn);
+    autoLoadNew = !s || s.xAutoLoadNew !== false;
     if (enabled) start();
     else stop();
   };
-  chrome.storage.local.get("settings").then(({ settings }) => apply(settings));
+  chrome.storage.local.get(["settings", "caBuy"]).then(({ settings, caBuy }) => apply(settings || null, caBuy || null));
   chrome.storage.onChanged.addListener((ch, area) => {
-    if (area === "local" && ch.settings?.newValue) apply(ch.settings.newValue);
+    if (area !== "local" || (!ch.settings && !ch.caBuy)) return;
+    apply(ch.settings ? ch.settings.newValue || null : undefined, ch.caBuy ? ch.caBuy.newValue || null : undefined);
   });
 
   function textOf(el) {

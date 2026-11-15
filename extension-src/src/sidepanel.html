@@ -31,6 +31,7 @@
     <button data-tab="feed" class="on"><span data-i18n="Feed">Feed</span> <span class="count" id="feedCount"></span></button>
     <button data-tab="launched"><span data-i18n="Launched">Launched</span> <span class="count" id="depCount"></span></button>
     <button data-tab="callouts"><span data-i18n="Callouts">Callouts</span> <span class="count" id="callCount"></span></button>
+    <button data-tab="trade"><span data-i18n="Trade">Trade</span> <span class="count" id="tradeCount"></span></button>
     <button data-tab="settings" data-i18n-title="Settings" title="Settings"><svg class="tab-ic" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.3" fill="none" stroke="currentColor" stroke-width="2.6" stroke-dasharray="2.775 2.775"/><circle cx="8" cy="8" r="3.3" fill="none" stroke="currentColor" stroke-width="1.7"/></svg><span class="tab-lbl" data-i18n="Settings">Settings</span></button>
     <div class="balbox"><span class="bal" id="bal">no wallet</span><button class="cur-btn" id="curBtn" data-i18n-title="Show amounts in SOL, $, € or £" title="Show amounts in SOL, $, € or £"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.2 1.8 14.4 5l-3.2 3.2-1-1 1.5-1.5H3V4.3h8.7L10.2 2.8z"/><path d="M4.8 14.2 1.6 11l3.2-3.2 1 1-1.5 1.5H13v1.4H4.3l1.5 1.5z"/></svg></button><button class="icon-btn" id="balRefresh" data-i18n-title="Refresh balance and holdings" title="Refresh balance and holdings">⟳</button></div>
   </nav>
@@ -39,6 +40,7 @@
 
   <main>
     <section id="tab-feed" class="tab on">
+      <div class="tab-switches" data-place="feed" hidden></div>
       <div class="manual">
         <textarea id="manualText" rows="2" data-i18n-ph="Paste a headline, tweet text or link to make a coin from anything…" placeholder="Paste a headline, tweet text or link to make a coin from anything…"></textarea>
         <div class="manual-row">
@@ -48,12 +50,13 @@
       </div>
       <div class="feed-head">
         <span class="muted" id="feedHint"></span>
-        <span class="head-links"><button class="link" id="watchBtn">Turn off</button><button class="link" id="clearFeed" data-i18n="Clear">Clear</button></span>
+        <span class="head-links"><button class="link" id="clearFeed" data-i18n="Clear">Clear</button></span>
       </div>
       <div id="feed"></div>
     </section>
 
     <section id="tab-launched" class="tab">
+      <div class="tab-switches" data-place="launched" hidden></div>
       <div id="rewardsBox" class="rewards"></div>
       <div class="feed-head">
         <span class="muted" id="depSummary"></span>
@@ -63,6 +66,7 @@
     </section>
 
     <section id="tab-callouts" class="tab">
+      <div class="tab-switches" data-place="callouts" hidden></div>
       <p class="call-intro" data-i18n="A callout tells your pump.fun followers why you hold a coin. Pick a coin below, take one of the ready texts or write your own, and send it from here.">A callout tells your pump.fun followers why you hold a coin. Pick a coin below, take one of the ready texts or write your own, and send it from here.</p>
       <div class="call-wallet">
         <label for="callWallet" data-i18n="Wallet you use on pump.fun">Wallet you use on pump.fun</label>
@@ -77,7 +81,17 @@
       <p class="help call-note" data-i18n="pump.fun takes a callout only from the account that is logged in to pump.fun in this browser, and only for a coin that account holds at least $1 of.">pump.fun takes a callout only from the account that is logged in to pump.fun in this browser, and only for a coin that account holds at least $1 of.</p>
     </section>
 
+    <section id="tab-trade" class="tab">
+      <div class="tab-switches" data-place="trade" hidden></div>
+      <div class="trade-page" data-page="cabuy"><div id="caBuyBox"></div></div>
+      <div class="trade-page" data-page="copy" hidden><div id="copyBox"></div></div>
+      <div class="trade-page" data-page="positions" hidden><div id="posBox"></div></div>
+      <div class="trade-page" data-page="pumps" hidden><div id="pumpBox"></div></div>
+      <div class="trade-page" data-page="callauto" hidden><div id="coAutoBox"></div></div>
+    </section>
+
     <section id="tab-settings" class="tab">
+      <div class="tab-switches" data-place="settings" hidden></div>
       <div id="settingsForm"></div>
       <div class="save-bar" id="saveBar">
         <button id="saveBtn" data-i18n="Save settings">Save settings</button>
@@ -98,5 +112,7 @@
   <script src="sidepanel.js"></script>
   <script src="callout-filters.js"></script>
   <script src="callout-auto-ui.js"></script>
+  <script src="trade-ui.js"></script>
+  <script src="switches-ui.js"></script>
 </body>
 </html>

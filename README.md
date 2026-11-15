@@ -60,6 +60,64 @@ extension's service worker (`importScripts`), the side panel and the desktop app
 load the very same files. Tests: `extension-src/test/callout-auto/` (run by `npm test` there, against a stand-in
 wallet, RPC, stream and callout API) and `tests/electron-callout-auto.cjs` (the real desktop app, offline).
 
+## CA buy and pump alerts (3.7)
+
+- **CA buy** (Settings → CA buy): when one of the X accounts you list posts a contract address, Hatchr buys it at
+  once. The post is handed to `ca-buy.js` before anything else looks at it, and everything the buy needs is kept in
+  memory, so between "post arrives" and "transaction sent" there are two network calls: PumpPortal builds the
+  transaction (`pool: "auto"`), your RPC takes it. A coin that is not priced in SOL (paired with USDC or another
+  pump.fun coin; PumpPortal answers 400) goes through Jupiter, whose price was asked at the same moment (3.7.1). For a coin still on the bonding curve PumpPortal answers 200 even
+  when it is priced in another token, and that transaction fails on-chain (6063); so the curve's quote mint is read
+  in parallel, and such a coin gets a dry run of PumpPortal's transaction next to Jupiter's build (3.7.2). Off by default, follows TEST / LIVE, each address is bought once.
+- **Pump alerts** (Settings → Pump alerts): every 20 seconds the prices of the coins you hold are read (DexScreener,
+  or the bonding curve on-chain for coins too new for it). A coin that is up X% since Hatchr started watching it, or
+  up Y% within Z minutes, raises a desktop notification, a sound and, when set up, a message to your phone through
+  your own Telegram bot. It only tells you; nothing is sold.
+
+**Trade tab (3.9)**: CA buy, Copy trade, Positions, Pump alerts and Auto callouts moved out of Settings into their
+own tab (`trade-ui.js`, `callout-auto-ui.js`), each page in short sections whose fields only show when they apply
+(`data-if` rules, the same language Settings now uses: `a`, `!a`, `a=x`, `a!=x`, `,` = and, `|` = or). The on/off
+switches sit at the top of each page (`switches-ui.js`, read straight from storage).
+
+**Automatic exits (3.9)**, `positions.js`: every buy by CA buy, the launch watch or copy trade opens a position with
+that feature's exit rules (take profit in up to three steps, stop loss, trailing stop, market cap, time limit), all
+measured from the price paid. Curve coins are priced from the bonding curve every 2 s (one `getMultipleAccounts`),
+others from DexScreener every 6 s from a pinned pool, where a rule has to hold twice. TEST buys open paper
+positions. Coins Hatchr called out are never sold automatically.
+
+**Copy trade per wallet (3.9)**: each wallet has its own size, sell rule and exits, and can be followed for its buys,
+only for the coins it creates (pump.fun `CreateEvent` in its transaction log), or both.
+
+**⚡ Boost (3.9)**, `HatchrRoutes.feeEstimate`: Helius `getPriorityFeeEstimate` ("high") or the 75th percentile of
+`getRecentPrioritizationFees` for the pump.fun program, × 150k compute units, between 0.0001 and 0.003 SOL, cached
+30 s and refreshed in the background so a buy never waits for it.
+
+**Lighter (3.9)**: the panel no longer polls every feature every 5 s (97 messages a minute idle on the Feed, now 1);
+pages ask only while on screen; the Feed is redrawn only when seen; positions write prices every 10 s; the plain
+background scripts are minified (readable copies in `source/`).
+
+**Launch watch (3.8)**, part of CA buy: a post from a chosen account with a `$TICKER` and/or a picture but no
+address starts a watch. Every new pump.fun coin from PumpPortal's stream (`HatchrCaBuy.onStream`, fed by
+background.js) is matched against it: ticker (or name), and the picture by a 64-bit difference hash of both images
+(`OffscreenCanvas`), optionally only from the account's dev wallet, which is learned when the account posts the
+address of a coin made in the ten minutes before. One buy per post.
+
+**Copy trade (3.8)**, `copytrade.js`: one `logsSubscribe` per followed wallet on your own RPC at "processed".
+pump.fun `TradeEvent` and PumpSwap `BuyEvent` / `SellEvent` are decoded straight from the `Program data:` log lines
+(layouts from pump.fun's public IDL); anything else is read with `getTransaction`. Buys and sells are built by
+`trade-routes.js` (PumpPortal, or Jupiter when PumpPortal cannot), shared with CA buy.
+
+Since 3.7.3 every tab has on/off switches at the top (`switches-ui.js`), and CA buy, auto callouts and pump alerts
+run on their own switch: the Feed's "Watch posts" (the old main switch) only stops launching from posts. Axiom and
+X tabs are read while either the Feed or CA buy wants posts. After an install or update the background puts the
+page bridge back into open Axiom and X tabs (`reconnectTabs`); before, the tab in front was left disconnected until
+it was reloaded by hand. The CA buy page shows whether the Axiom tab is connected and when each chosen account's last
+post arrived, with a Reconnect button.
+
+Code: `extension-src/src/ca-buy.js`, `pump-alerts.js` (also the phone messages, as `HatchrPush`) and `extras-ui.js`
+(both settings pages). Plain scripts like the callout ones, loaded by the service worker, the side panel and the
+desktop app's `background.html`. Tests: `extension-src/test/callout-auto/extras.test.js`.
+
 ## Direct Pump.fun callouts (3.5.9)
 
 The callout composer posts directly through the Pump.fun API. In the extension,

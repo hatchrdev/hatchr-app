@@ -159,14 +159,9 @@ function renderHeader() {
   const b = $("#banner");
   b.hidden = false;
   const off = settings.watching === false;
-  const wb = $("#watchBtn");
-  wb.textContent = off ? t("Turn on") : t("Turn off");
-  wb.title = off
-    ? t("Turn on: Hatchr watches Axiom, X and Telegram again.")
-    : t("Turn off: Hatchr stops watching posts and does nothing in the background, as if it were disabled. Your wallet, the Launched tab and Generate keep working.");
   if (off) {
     b.className = "banner off";
-    b.textContent = t("Hatchr is off. It watches no posts and does nothing in the background.") + " ";
+    b.textContent = t("Watching posts is off: nothing is read or launched from posts. CA buy, auto callouts and pump alerts have their own switches.") + " ";
     const on = document.createElement("button");
     on.className = "link";
     on.textContent = t("Turn on");
@@ -199,12 +194,13 @@ function fitHeader() {
   if (crowded()) top.classList.add("no-tier");
   if (crowded()) top.classList.add("no-ai");
   if (top.scrollWidth > top.clientWidth + 1 || $(".controls").getBoundingClientRect().left < $(".wordmark").getBoundingClientRect().right + 6) top.classList.add("compact");
-  // Four tabs and the balance share one row. When they don't fit: tighter pills, then a gear instead of the word
-  // "Settings", and as the last step the balance moves to a row of its own.
-  tabs.classList.remove("tight", "icons", "wrap");
+  // Five tabs and the balance share one row. When they don't fit: tighter pills, then a gear instead of the word
+  // "Settings", then smaller pills still, and as the last step the balance moves to a row of its own.
+  tabs.classList.remove("tight", "icons", "tight2", "wrap");
   const over = () => tabs.scrollWidth > tabs.clientWidth + 1;
   if (over()) tabs.classList.add("tight");
   if (over()) tabs.classList.add("icons");
+  if (over()) tabs.classList.add("tight2");
   if (over()) tabs.classList.add("wrap");
 }
 addEventListener("resize", () => fitHeader());
@@ -235,7 +231,6 @@ $("#dryBtn").addEventListener("click", async () => {
   await setSetting({ dryRun: !settings.dryRun });
 });
 $("#pauseBtn").addEventListener("click", () => setSetting({ paused: !settings.paused }));
-$("#watchBtn").addEventListener("click", () => setSetting({ watching: settings.watching === false }));
 
 async function refreshBalance() {
   try {
@@ -268,10 +263,17 @@ async function refreshBalance() {
 }
 
 // ---------------- tabs ----------------
+let currentTab = "feed";
+const feedOnScreen = () => currentTab === "feed" && document.visibilityState !== "hidden";
+document.addEventListener("visibilitychange", () => { if (feedOnScreen()) renderFeed(); });
 function showTab(name) {
+  currentTab = name;
   $$(".tabs button[data-tab]").forEach((x) => x.classList.toggle("on", x.dataset.tab === name));
   $$(".tab").forEach((el) => el.classList.toggle("on", el.id === `tab-${name}`));
-  $("#subtabs").hidden = name !== "settings";
+  $("#subtabs").hidden = name !== "settings" && name !== "trade";
+  if (name === "trade" || name === "settings") renderSubnav();
+  if (name === "trade") showTradeSub(tradeSub);
+  if (name === "feed") renderFeed(); // brought up to date when it comes on screen (see feedOnScreen)
   launchedTabShown(name === "launched");
   calloutsTabShown(name === "callouts");
 }
@@ -575,7 +577,7 @@ function renderFeed() {
   $("#feedHint").textContent = hint;
 
   if (!feed.length && off) {
-    root.innerHTML = `<div class="empty"><b>${esc(t("Hatchr is off."))}</b><br>${esc(t("Turn it on to see new posts here. You can still paste a post above and press Generate."))}</div>`;
+    root.innerHTML = `<div class="empty"><b>${esc(t("Watching posts is off."))}</b><br>${esc(t("Turn it on to see new posts here. You can still paste a post above and press Generate."))}</div>`;
     return;
   }
   if (!feed.length) {
@@ -915,7 +917,6 @@ const SUBS = [
   ["ai", "🤖", "AI"],
   ["images", "🖼️", "Images"],
   ["auto", "⚡", "Auto"],
-  ["callauto", "📣", "Callouts"], // the callout automode; its form is drawn by callout-auto-ui.js
   ["alerts", "🔔", "Alerts"],
   ["language", "🌐", "Language"],
 ];
@@ -938,8 +939,9 @@ const SCHEMA = [
       { k: "devBuySol", label: "Dev buy (SOL)", type: "number", step: "0.0001" },
       { k: "slippage", label: "Slippage %", type: "number", step: "1" },
     ] },
+    { k: "boostFee", label: "⚡ Boost: the priority fee follows the network", type: "checkbox", help: "A live launch pays what the network asks right now for a fast landing, never more than 0.003 SOL, instead of the fixed fee below." },
     { row: [
-      { k: "priorityFee", label: "Priority fee (SOL)", type: "number", step: "0.00001" },
+      { k: "priorityFee", if: "!boostFee", label: "Priority fee (SOL)", type: "number", step: "0.00001" },
       { k: "tickerMaxLen", label: "Max ticker length", type: "number", step: "1" },
     ] },
     { k: "skipPreflight", label: "Skip preflight check", type: "checkbox", help: "Slightly faster, but failed txs still cost fees." },
@@ -959,8 +961,8 @@ const SCHEMA = [
   { sub: "launch", title: "Creator rewards", fields: [
     { k: "autoClaimRewards", label: "Auto-claim creator rewards", type: "checkbox", help: "Checks your unclaimed rewards and claims them once they're worth it (each claim costs a tiny network fee). LIVE only." },
     { row: [
-      { k: "autoClaimMinSol", label: "Claim when ≥ (SOL)", type: "number", step: "0.005" },
-      { k: "autoClaimEveryMin", label: "Check every (min)", type: "number", step: "10" },
+      { k: "autoClaimMinSol", if: "autoClaimRewards", label: "Claim when ≥ (SOL)", type: "number", step: "0.005" },
+      { k: "autoClaimEveryMin", if: "autoClaimRewards", label: "Check every (min)", type: "number", step: "10" },
     ] },
   ] },
   { sub: "launch", title: "Callouts", fields: [
@@ -973,55 +975,55 @@ const SCHEMA = [
     { k: "telegram", label: "Telegram (optional)" },
   ] },
 
-  { sub: "sources", title: "Main switch", fields: [
-    { k: "watching", label: "Watch for new posts", type: "checkbox", help: "Off = as if Hatchr were disabled: it reads nothing on Axiom, X or Telegram, shows Axiom's tracker panel again, lets Chrome put those tabs to sleep and closes the pump.fun stream. Your wallet, the Launched tab, selling and making a coin from pasted text keep working." },
+  { sub: "sources", title: "Watch posts", fields: [
+    { k: "watching", label: "Watch for new posts", type: "checkbox", help: "Off: nothing is read or launched from posts, Axiom's tracker panel shows again and Chrome may put those tabs to sleep. CA buy, auto callouts and pump alerts have their own switches and keep running (CA buy still reads Axiom). Your wallet, the Launched tab, selling and making a coin from pasted text keep working." },
   ] },
   { sub: "sources", title: "Axiom", fields: [
     { k: "axiomEnabled", label: "Watch Axiom X tracker", type: "checkbox", help: "Listens to Axiom's live tweet stream while an axiom.trade tab is open. Reacts to the accounts in your Axiom list." },
     { k: "axiomKeepTracker", label: "Keep Axiom's X tracker connected", type: "checkbox", help: "Axiom only streams tweets while its tracker panel is open, so the extension keeps it open for you." },
-    { k: "axiomHideTracker", label: "…and hide the tracker panel", type: "checkbox", help: "The panel keeps running invisibly. Turn this off to see and use Axiom's tracker yourself." },
+    { k: "axiomHideTracker", if: "axiomKeepTracker", label: "…and hide the tracker panel", type: "checkbox", help: "The panel keeps running invisibly. Turn this off to see and use Axiom's tracker yourself." },
     { k: "keepAxiomOpen", label: "Keep Axiom running automatically", type: "checkbox", help: "Stops Chrome from putting the Axiom tab to sleep, reopens it as a pinned background tab if you close it, and wakes it if it stops sending." },
     { row: [
-      { k: "axiomOriginal", label: "Posts", type: "checkbox" },
-      { k: "axiomQuotes", label: "Quotes", type: "checkbox" },
+      { k: "axiomOriginal", if: "axiomEnabled", label: "Posts", type: "checkbox" },
+      { k: "axiomQuotes", if: "axiomEnabled", label: "Quotes", type: "checkbox" },
     ] },
     { row: [
-      { k: "axiomReplies", label: "Replies", type: "checkbox" },
-      { k: "axiomReposts", label: "Reposts", type: "checkbox" },
+      { k: "axiomReplies", if: "axiomEnabled", label: "Replies", type: "checkbox" },
+      { k: "axiomReposts", if: "axiomEnabled", label: "Reposts", type: "checkbox" },
     ] },
-    { k: "axiomFilterHandles", label: "Only Axiom alerts from the X accounts below", type: "checkbox", help: "Off = react to everything in your Axiom tracker." },
+    { k: "axiomFilterHandles", if: "axiomEnabled", label: "Only Axiom alerts from the X accounts below", type: "checkbox", help: "Off = react to everything in your Axiom tracker." },
   ] },
   { sub: "sources", title: "pump.fun", fields: [
     { k: "pumpMeta", label: "Follow every pump.fun launch live (for the meta)", type: "checkbox", help: "Free, no account or Axiom needed. Hatchr reads each new coin and each coin that graduates as it happens, so the AI knows what's being launched and what's running. Works together with Axiom Pulse if you have it open. Needs AI naming and \"Follow the current meta\" on." },
   ] },
   { sub: "sources", title: "X (Twitter)", fields: [
     { k: "xEnabled", label: "Watch X tabs", type: "checkbox" },
-    { k: "xHandles", label: "X accounts to react to", type: "textarea", rows: 6, reset: PRESET_HANDLES, resetLabel: "load preset", help: "One per line, without @. Empty = every post that appears in your X tab." },
-    { k: "xAutoLoadNew", label: "Auto-click \"Show new posts\"", type: "checkbox" },
+    { k: "xHandles", if: "xEnabled", label: "X accounts to react to", type: "textarea", rows: 6, reset: PRESET_HANDLES, resetLabel: "load preset", help: "One per line, without @. Empty = every post that appears in your X tab." },
+    { k: "xAutoLoadNew", if: "xEnabled", label: "Auto-click \"Show new posts\"", type: "checkbox" },
     { k: "maxPostAgeSec", label: "Ignore posts older than (sec)", type: "number", step: "10" },
   ] },
   { sub: "sources", title: "Telegram", fields: [
     { k: "tgEnabled", label: "Watch Telegram channels", type: "checkbox" },
-    { k: "tgChannels", label: "Public channel usernames", type: "textarea", help: "One per line, e.g. a news channel's @name. Polled every ~30s (Chrome minimum)." },
-    { k: "tgPollSec", label: "Telegram poll interval (sec, min 30)", type: "number", step: "5" },
+    { k: "tgChannels", if: "tgEnabled", label: "Public channel usernames", type: "textarea", help: "One per line, e.g. a news channel's @name. Polled every ~30s (Chrome minimum)." },
+    { k: "tgPollSec", if: "tgEnabled", label: "Telegram poll interval (sec, min 30)", type: "number", step: "5" },
   ] },
 
   { sub: "ai", title: "AI provider", custom: "aiprovider", fields: [
     { k: "aiEnabled", label: "Use AI for names + scoring", type: "checkbox", help: "Off = built-in rules (cashtags, hashtags, key words)." },
-    { k: "aiProvider", label: "AI provider", type: "select", options: providerOptions, help: "Groq and Gemini are free. \"My own AI\" links any other AI that has an API." },
+    { k: "aiProvider", if: "aiEnabled", label: "AI provider", type: "select", options: providerOptions, help: "Groq and Gemini are free. \"My own AI\" links any other AI that has an API." },
     { k: "aiUrl", label: "AI endpoint URL", cls: "ai-custom", guide: "customai", help: "OpenAI format ends in /chat/completions, Anthropic format in /v1/messages." },
     { k: "aiFormat", label: "API format", type: "select", cls: "ai-custom", options: [["openai", "OpenAI-compatible (chat/completions)"], ["anthropic", "Anthropic (messages)"]] },
-    { k: "aiKey", label: "AI API key", type: "password", guide: "@provider" },
-    { k: "aiModel", label: "Model", help: "Use a model name your provider lists." },
+    { k: "aiKey", if: "aiEnabled", label: "AI API key", type: "password", guide: "@provider" },
+    { k: "aiModel", if: "aiEnabled", label: "Model", help: "Use a model name your provider lists." },
     { k: "aiHeaders", label: "Extra headers (optional)", type: "textarea", rows: 2, cls: "ai-custom", help: "Only if your API needs them. One per line, like api-key: 123" },
   ] },
   { sub: "ai", title: "How the AI names coins", custom: "naming", fields: [
-    { k: "aiFor", label: "Use AI on", type: "select", options: [["candidates", "Only posts that could launch (saves tokens)"], ["all", "Every post"], ["manual", "Only when I press ↻ on a card"]], help: "\"Could launch\" skips posts blocked by your keywords, cooldown or launch limits. Press ↻ on any card to get an AI name anyway." },
-    { k: "aiFallback", label: "If the AI is unavailable (daily limits), auto mode should", type: "select", options: [["skip", "Skip the post (safe)"], ["rules", "Launch on my rules with built-in naming"]] },
-    { k: "aiMeta", label: "Follow the current meta", type: "checkbox", help: "The AI sees what's running on pump.fun right now (from the live pump.fun stream, plus your Axiom Pulse page if it's open) and names coins in the meta's style, e.g. Pussycoin when ___coin is running." },
-    { k: "metaWindowMin", label: "Meta window (minutes)", type: "number", step: "30", help: "How far back the meta looks. 120-240 works well." },
-    { k: "aiShortNames", label: "Keep names memecoin-style", type: "checkbox", help: "Strips \"Token\"/\"Coin\" the AI tacks on (unless the post says it) and completes cut-off tickers (NUCLEA → NUCLEAR)." },
-    { k: "aiPrompt", label: "AI prompt", type: "textarea", rows: 8, reset: DEFAULT_PROMPT },
+    { k: "aiFor", if: "aiEnabled", label: "Use AI on", type: "select", options: [["candidates", "Only posts that could launch (saves tokens)"], ["all", "Every post"], ["manual", "Only when I press ↻ on a card"]], help: "\"Could launch\" skips posts blocked by your keywords, cooldown or launch limits. Press ↻ on any card to get an AI name anyway." },
+    { k: "aiFallback", if: "aiEnabled", label: "If the AI is unavailable (daily limits), auto mode should", type: "select", options: [["skip", "Skip the post (safe)"], ["rules", "Launch on my rules with built-in naming"]] },
+    { k: "aiMeta", if: "aiEnabled", label: "Follow the current meta", type: "checkbox", help: "The AI sees what's running on pump.fun right now (from the live pump.fun stream, plus your Axiom Pulse page if it's open) and names coins in the meta's style, e.g. Pussycoin when ___coin is running." },
+    { k: "metaWindowMin", if: "aiEnabled,aiMeta", label: "Meta window (minutes)", type: "number", step: "30", help: "How far back the meta looks. 120-240 works well." },
+    { k: "aiShortNames", if: "aiEnabled", label: "Keep names memecoin-style", type: "checkbox", help: "Strips \"Token\"/\"Coin\" the AI tacks on (unless the post says it) and completes cut-off tickers (NUCLEA → NUCLEAR)." },
+    { k: "aiPrompt", if: "aiEnabled", label: "AI prompt", type: "textarea", rows: 8, reset: DEFAULT_PROMPT },
   ] },
 
   { sub: "images", title: "Coin picture", fields: [
@@ -1034,19 +1036,19 @@ const SCHEMA = [
   ] },
   { sub: "images", title: "AI images", custom: "aiimages", fields: [
     { k: "imageAiProvider", label: "AI image generator", type: "select", options: [["off", "Off"], ["cloudflare", "Cloudflare Workers AI (free, ~230/day)"], ["openai", "OpenAI GPT Image (paid per image)"]] },
-    { k: "imageAiWhen", label: "Use AI images", type: "select", options: [["no-good-image", "When there's no good picture (no post image, and no famous face to use)"], ["no-post-image", "When the post has no image of its own"], ["always", "Always, even if the post has an image"], ["manual", "Only when I press 🎨 on a card"]], help: "\"No good picture\": post photo first, then the author's profile pic if they're a famous person, otherwise an AI image." },
-    { k: "cfAccountId", label: "Cloudflare account ID", guide: "cloudflare" },
-    { k: "cfToken", label: "Cloudflare API token", type: "password", guide: "cloudflare", help: "Create it with the \"Workers AI\" template." },
-    { k: "openaiKey", label: "OpenAI API key", type: "password", guide: "openai" },
+    { k: "imageAiWhen", if: "imageAiProvider!=off", label: "Use AI images", type: "select", options: [["no-good-image", "When there's no good picture (no post image, and no famous face to use)"], ["no-post-image", "When the post has no image of its own"], ["always", "Always, even if the post has an image"], ["manual", "Only when I press 🎨 on a card"]], help: "\"No good picture\": post photo first, then the author's profile pic if they're a famous person, otherwise an AI image." },
+    { k: "cfAccountId", if: "imageAiProvider=cloudflare", label: "Cloudflare account ID", guide: "cloudflare" },
+    { k: "cfToken", if: "imageAiProvider=cloudflare", label: "Cloudflare API token", type: "password", guide: "cloudflare", help: "Create it with the \"Workers AI\" template." },
+    { k: "openaiKey", if: "imageAiProvider=openai", label: "OpenAI API key", type: "password", guide: "openai" },
     { row: [
-      { k: "openaiImageModel", label: "OpenAI model", help: "auto = newest GPT Image model your key can use" },
-      { k: "openaiImageQuality", label: "OpenAI quality", type: "select", options: [["low", "low (cheapest)"], ["medium", "medium"], ["high", "high"]] },
+      { k: "openaiImageModel", if: "imageAiProvider=openai", label: "OpenAI model", help: "auto = newest GPT Image model your key can use" },
+      { k: "openaiImageQuality", if: "imageAiProvider=openai", label: "OpenAI quality", type: "select", options: [["low", "low (cheapest)"], ["medium", "medium"], ["high", "high"]] },
     ] },
-    { k: "imageAiStyle", label: "Image style", type: "textarea", rows: 4, reset: DEFAULT_IMAGE_STYLE, help: "Empty = default memecoin-logo style. The AI naming adds the subject for each coin." },
+    { k: "imageAiStyle", if: "imageAiProvider!=off", label: "Image style", type: "textarea", rows: 4, reset: DEFAULT_IMAGE_STYLE, help: "Empty = default memecoin-logo style. The AI naming adds the subject for each coin." },
   ] },
   { sub: "images", title: "Video posts", fields: [
     { k: "aiPickFrame", label: "🎬 Let the AI pick the best video frame", type: "checkbox", help: "For video posts the extension grabs 6 frames. A vision AI picks the one that shows the subject best (e.g. the dog); without it, the sharpest clear frame is used." },
-    { k: "aiVisionModel", label: "Vision model (for picking frames)", help: "A model on your AI provider that can see images. Empty = use the sharpest frame." },
+    { k: "aiVisionModel", if: "aiPickFrame", label: "Vision model (for picking frames)", help: "A model on your AI provider that can see images. Empty = use the sharpest frame." },
   ] },
 
   { sub: "auto", title: "Auto mode rules", fields: [
@@ -1072,12 +1074,11 @@ const SCHEMA = [
     { k: "notifyNewPosts", label: "Notify on every new post", type: "checkbox" },
     { k: "notifyDeploys", label: "Notify on launches / failures", type: "checkbox" },
     { k: "soundEnabled", label: "🔔 Play a bell when a coin launches", type: "checkbox" },
-    { k: "soundOnDryRun", label: "…also for test launches (softer ding)", type: "checkbox" },
-    { k: "soundOnSell", label: "…also when a Sell all goes through", type: "checkbox" },
-    { k: "soundVolume", label: "Bell volume (0-100)", type: "number", step: "5" },
+    { k: "soundOnDryRun", if: "soundEnabled", label: "…also for test launches (softer ding)", type: "checkbox" },
+    { k: "soundOnSell", if: "soundEnabled", label: "…also when a Sell all goes through", type: "checkbox" },
+    { k: "soundVolume", if: "soundEnabled", label: "Bell volume (0-100)", type: "number", step: "5" },
   ] },
 
-  { sub: "callauto", title: "Auto callouts", custom: "callauto" },
   { sub: "language", title: "Language", custom: "language" },
 ];
 
@@ -1092,8 +1093,9 @@ function fieldHtml(f) {
   const id = `s-${f.k}`;
   const help = f.help ? `<div class="help">${esc(t(f.help))}</div>` : "";
   const cls = f.cls ? ` ${f.cls}` : "";
+  const when = f.if ? ` data-if="${esc(f.if)}"` : ""; // shown only when the rule holds (see showWhen)
   if (f.type === "checkbox") {
-    return `<div class="fld check${cls}"><input type="checkbox" id="${id}" data-k="${f.k}" ${v ? "checked" : ""}/><div><label for="${id}">${esc(t(f.label))}</label>${infoBtn(f.guide)}${help}</div></div>`;
+    return `<div class="fld check${cls}"${when}><input type="checkbox" id="${id}" data-k="${f.k}" ${v ? "checked" : ""}/><div><label for="${id}">${esc(t(f.label))}</label>${infoBtn(f.guide)}${help}</div></div>`;
   }
   let input;
   if (f.type === "textarea") input = `<textarea id="${id}" data-k="${f.k}" rows="${f.rows || 3}">${esc(v)}</textarea>`;
@@ -1103,7 +1105,7 @@ function fieldHtml(f) {
     input = `<select id="${id}" data-k="${f.k}">${opts.map(([o, l]) => `<option value="${esc(o)}" ${o === val ? "selected" : ""}>${esc(t(l))}</option>`).join("")}</select>`;
   } else input = `<input id="${id}" data-k="${f.k}" type="${f.type || "text"}" ${f.step ? `step="${f.step}"` : ""} value="${esc(v)}" ${f.type === "password" ? 'autocomplete="off"' : ""}/>`;
   const reset = f.reset ? ` <button class="link" data-reset="${f.k}">${esc(t(f.resetLabel || "reset"))}</button>` : "";
-  return `<div class="fld${cls}" data-fld="${f.k}"><label for="${id}">${esc(t(f.label))}${infoBtn(f.guide)}${reset}</label>${input}${help}</div>`;
+  return `<div class="fld${cls}" data-fld="${f.k}"${when}><label for="${id}">${esc(t(f.label))}${infoBtn(f.guide)}${reset}</label>${input}${help}</div>`;
 }
 const currentProviderFromSettings = () => settings.aiProvider || providerForUrl(settings.aiUrl);
 
@@ -1156,14 +1158,14 @@ function sectionHtml(sec) {
       <div id="backupOut" class="help"></div>`);
   }
   if (sec.custom === "token") return wrap(`<div id="tokenBox"></div>`);
-  if (sec.custom === "callauto") return wrap(`<div id="coAutoBox"></div>`); // filled in by callout-auto-ui.js, which has its own Save
   if (sec.custom === "votes") return wrap(`<div id="votesBox"></div>`);
   if (sec.custom === "language") {
     return wrap(`<div class="fld"><label for="s-language">${esc(t("Language"))}</label>
       <select id="s-language" data-k="language">${LANGUAGES.map(([c, l]) => `<option value="${c}" ${c === (settings.language || "auto") ? "selected" : ""}>${esc(c === "auto" ? t(l) : l)}</option>`).join("")}</select>
       <div class="help">${esc(t("Changes right away. Messages that come from websites and APIs (errors, skip reasons) may stay in English."))}</div></div>`);
   }
-  const body = sec.fields.map((f) => (f.row ? `<div class="grid2">${f.row.map(fieldHtml).join("")}</div>` : fieldHtml(f))).join("");
+  const rowIf = (row) => (row.every((f) => f.if && f.if === row[0].if) ? ` data-if="${esc(row[0].if)}"` : "");
+  const body = sec.fields.map((f) => (f.row ? `<div class="grid2"${rowIf(f.row)}>${f.row.map((x) => fieldHtml({ ...x, if: rowIf(f.row) ? "" : x.if })).join("")}</div>` : fieldHtml(f))).join("");
   const extra = sec.custom === "aiimages"
     ? `<div class="fld"><button id="aiTestBtn" class="ghost wide">${esc(t("Test AI image (save first)"))}</button><div id="aiTestOut"></div></div>`
     : sec.custom === "aiprovider"
@@ -1176,7 +1178,25 @@ function sectionHtml(sec) {
 }
 
 function renderSubnav() {
-  $("#subtabs").innerHTML = SUBS.map(([id, icon, label]) => `<button data-sub="${id}" class="${id === subTab ? "on" : ""}"><span>${icon}</span> ${esc(t(label))}</button>`).join("");
+  const trade = currentTab === "trade", list = trade ? TRADE_SUBS : SUBS, on = trade ? tradeSub : subTab;
+  $("#subtabs").innerHTML = list.map(([id, icon, label]) => `<button data-sub="${id}" class="${id === on ? "on" : ""}"><span>${icon}</span> ${esc(t(label))}</button>`).join("");
+}
+// The Trade tab: the features that buy, sell and watch by themselves, each on its own page (drawn by trade-ui.js and
+// callout-auto-ui.js), so Settings keeps only settings.
+const TRADE_SUBS = [
+  ["cabuy", "🎯", "CA buy"],         // buy what an X account posts, or the coin it is about to launch
+  ["copy", "🔁", "Copy trade"],      // buy (and sell) when a wallet you follow does
+  ["positions", "💼", "Positions"],  // what Hatchr bought, with its automatic exits
+  ["pumps", "📈", "Pump alerts"],    // tell me when a coin I hold jumps
+  ["callauto", "📣", "Auto callouts"], // buy new coins that pass filters and call them out
+];
+let tradeSub = TRADE_SUBS.some(([s]) => s === store.get("hatchr.tradeSub")) ? store.get("hatchr.tradeSub") : "cabuy";
+function showTradeSub(id) {
+  tradeSub = TRADE_SUBS.some(([s]) => s === id) ? id : "cabuy";
+  store.set("hatchr.tradeSub", tradeSub);
+  $$("#subtabs button").forEach((b) => b.classList.toggle("on", b.dataset.sub === tradeSub));
+  $$("#tab-trade .trade-page").forEach((el) => { el.hidden = el.dataset.page !== tradeSub; });
+  globalThis.HatchrTrade?.shown(tradeSub);
 }
 function showSub(id) {
   subTab = SUBS.some(([s]) => s === id) ? id : "account";
@@ -1185,8 +1205,8 @@ function showSub(id) {
   $$("#settingsForm .sec").forEach((s) => { s.hidden = s.dataset.sub !== subTab; });
   // wide layout: one section gets a centered column, two or more sit side by side
   $("#settingsForm").dataset.n = String($$("#settingsForm .sec").filter((s) => !s.hidden).length);
-  $("#saveBtn").hidden = subTab === "account" || subTab === "language" || subTab === "token" || subTab === "callauto";
-  $("#testBtn").hidden = subTab === "token" || subTab === "callauto";
+  $("#saveBtn").hidden = subTab === "account" || subTab === "language" || subTab === "token";
+  $("#testBtn").hidden = subTab === "token";
   if (subTab === "token") refreshToken();
   $("#testOut").innerHTML = "";
   hideGuide(true);
@@ -1194,8 +1214,29 @@ function showSub(id) {
 }
 $("#subtabs").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-sub]");
-  if (b) { showSub(b.dataset.sub); scrollTop(); }
+  if (!b) return;
+  if (currentTab === "trade") showTradeSub(b.dataset.sub); else showSub(b.dataset.sub);
+  scrollTop();
 });
+// Settings: a field with a rule (data-if) is shown only when the rule holds for what the form says right now.
+function showWhen(root = $("#settingsForm")) {
+  if (!root) return;
+  const vals = {};
+  root.querySelectorAll("[data-k]").forEach((el) => { vals[el.dataset.k] = el.type === "checkbox" ? el.checked : el.value; });
+  root.querySelectorAll("[data-if]").forEach((el) => { el.hidden = !globalThis.HatchrWhen(el.dataset.if, vals); });
+}
+// "a" (on), "!a" (off), "a=x", "a!=x"; joined by commas all must hold; "|" between such groups: one group is enough
+globalThis.HatchrWhen = (rule, vals) => String(rule || "").split("|").some((group) => String(group).split(",").map((r) => r.trim()).filter(Boolean).every((r) => {
+  const m = r.match(/^(!?)([\w.]+)(?:(!?=)(.*))?$/);
+  if (!m) return true;
+  const v = vals[m[2]];
+  if (m[3] === "=") return String(v) === m[4];
+  if (m[3] === "!=") return String(v) !== m[4];
+  const on = v === true || (typeof v === "string" && v !== "" && v !== "0" && v !== "false");
+  return m[1] ? !on : on;
+}));
+$("#settingsForm").addEventListener("change", () => showWhen());
+$("#settingsForm").addEventListener("input", () => showWhen());
 
 function syncProviderFields() {
   const custom = currentProvider() === "custom";
@@ -1762,6 +1803,7 @@ function renderSettings() {
   $("#settingsForm").innerHTML = SCHEMA.map(sectionHtml).join("");
   renderSubnav();
   showSub(subTab);
+  showWhen();
   syncProviderFields();
   bindWallet();
   renderTokenBox();
@@ -2046,11 +2088,11 @@ chrome.storage.onChanged.addListener((ch, area) => {
   }
   if (ch.metaTokens) {
     const n = Object.keys(ch.metaTokens.newValue || {}).length;
-    if (n !== metaCount) { metaCount = n; if (!ch.feed) renderFeed(); }
+    if (n !== metaCount) { metaCount = n; if (!ch.feed && feedOnScreen()) renderFeed(); }
   }
   if (ch.rewards) { rewards = ch.rewards.newValue || null; renderRewards(); renderPnl(); }
-  if (ch.aiUsage) { aiUsage = ch.aiUsage.newValue || null; if (!ch.feed) renderFeed(); }
-  if (ch.axiomStatus) { axiomStatus = ch.axiomStatus.newValue || null; if (!ch.feed) renderFeed(); }
+  if (ch.aiUsage) { aiUsage = ch.aiUsage.newValue || null; if (!ch.feed && feedOnScreen()) renderFeed(); }
+  if (ch.axiomStatus) { axiomStatus = ch.axiomStatus.newValue || null; if (!ch.feed && feedOnScreen()) renderFeed(); } // every 10 s: only redrawn when seen
   if (ch.pumpStatus) pumpStatus = ch.pumpStatus.newValue || null;
   if (ch.vanityJob) onVanityJob(ch.vanityJob.newValue || null, ch.vanityJob.oldValue || null);
   if (ch.deploys) {
@@ -2065,6 +2107,7 @@ chrome.storage.onChanged.addListener((ch, area) => {
 });
 
 setInterval(() => {
+  if (currentTab !== "feed" || document.visibilityState === "hidden") return; // the ages only matter on screen
   $$(".card").forEach((el) => {
     const c = feed.find((x) => x.id === el.dataset.id);
     if (c) $(".age", el).textContent = agoText(c.time);
@@ -2089,4 +2132,9 @@ $("#balRefresh").addEventListener("click", async () => {
   }
 });
 
-load();
+// The switches at the top of each tab (switches-ui.js) are a separate script; this bundle's names are not global.
+globalThis.HatchrPanel = Object.freeze({
+  settings: () => settings, subTab: () => subTab, tradeSub: () => tradeSub, currentTab: () => currentTab, setSetting, ask, toast,
+});
+
+load().then(() => globalThis.HatchrSwitches?.render()).catch(() => {});

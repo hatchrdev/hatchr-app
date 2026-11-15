@@ -437,6 +437,10 @@ button.link.danger { color: var(--red); }
 .tabs.icons button[data-tab="settings"] { padding: 6px 8px; }
 .tabs.icons button[data-tab="settings"] .tab-ic { display: inline-block; }
 .tabs.icons button[data-tab="settings"] .tab-lbl { display: none; }
+.tabs.tight2 { gap: 3px; padding: 8px 4px; }
+.tabs.tight2 button[data-tab] { padding: 5px 7px; font-size: 12px; }
+.tabs.tight2 .balbox { gap: 3px; }
+.tabs.tight2 .balbox .bal { font-size: 11.5px; }
 .tabs.wrap { flex-wrap: wrap; row-gap: 6px; }
 
 /* RPC error in the tab row: hover/click shows the Helius guide */
@@ -696,3 +700,84 @@ body.gold .top { border-bottom-color: rgba(var(--gold-rgb), .28); }
 .ca-row.test > span:last-child { color: var(--amber); }
 .ca-links { color: var(--muted); white-space: nowrap; }
 #coAutoBox .onboard-row button { flex: 1; padding: 8px; }
+
+/* CA buy and pump alerts (extras-ui.js) */
+.ca-steps { margin: 4px 0 10px; padding-left: 18px; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.ca-steps b { color: inherit; font-weight: 700; }
+.ca-coins { margin: 6px 0; max-height: 220px; overflow: auto; }
+.ca-coin { display: grid; grid-template-columns: minmax(0, 1.4fr) 64px 80px; gap: 8px; padding: 4px 0; border-top: 1px solid var(--line); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ca-coin:first-child { border-top: 0; }
+.ca-coin .up { color: var(--green); text-align: right; }
+.ca-coin .down { color: var(--red); text-align: right; }
+.ca-coin .muted { text-align: right; }
+#caBuyBox .fld input:not([type=checkbox]), #caBuyBox .fld textarea, #pumpBox .fld input:not([type=checkbox]) { width: 100%; padding: 6px 8px; border: 1px solid var(--line); background: var(--panel2); border-radius: 10px; }
+#caBuyBox .onboard-row button, #pumpBox .onboard-row button { flex: 1; padding: 8px; }
+
+/* on/off switches at the top of each tab and settings page (switches-ui.js) */
+.tab-switches { display: flex; flex-direction: column; gap: 6px; margin: 0 0 10px; }
+.tab-switches[hidden] { display: none; }
+#tab-settings > .tab-switches { margin: 2px 0 12px; }
+.tsw { display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; cursor: pointer; }
+.tsw.on { border-color: rgba(var(--g-rgb), 0.45); }
+.tsw.unknown { opacity: .6; }
+.tsw-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tsw-txt b { font-size: 13px; }
+.tsw-txt small { color: var(--muted); font-size: 11.5px; line-height: 1.35; }
+.tsw input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.tsw-ui { flex: none; width: 38px; height: 22px; border-radius: 11px; background: var(--panel2); border: 1px solid var(--line); position: relative; transition: background .15s, border-color .15s; }
+.tsw-ui::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--muted); transition: transform .15s, background .15s; }
+.tsw input:checked + .tsw-ui { background: var(--green); border-color: var(--green); }
+.tsw input:checked + .tsw-ui::after { transform: translateX(16px); background: var(--bg); }
+.tsw input:focus-visible + .tsw-ui { outline: 2px solid var(--green); outline-offset: 2px; }
+.tsw input:disabled + .tsw-ui { opacity: .5; }
+/* where CA buy's posts come from */
+.ca-src { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+.ca-src .ok { color: var(--up); } .ca-src .warn { color: var(--amber); } .ca-src .bad { color: var(--red); }
+.ca-src .acc { color: var(--muted); }
+.ca-src button { margin-top: 4px; align-self: flex-start; }
+
+/* a hidden element stays hidden, whatever layout its class gives it (fields that only show when they apply) */
+[hidden] { display: none !important; }
+
+/* Trade tab pages (trade-ui.js): short sections, a field only when it applies */
+.tr-intro { margin-top: 0; }
+.tr-sec { margin: 14px 0 6px; padding-top: 10px; border-top: 1px solid var(--line); }
+.tr-h { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+.tr-sub { margin: 10px 0 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.tr-hint { margin: 0 0 8px; }
+.tr-inset { margin: 6px 0 8px; padding: 8px 10px; border-left: 2px solid var(--line); background: var(--panel2); border-radius: 0 var(--radius) var(--radius) 0; }
+/* ⚡ Boost */
+.boost-row { display: flex; align-items: flex-start; gap: 10px; margin: 4px 0 8px; }
+.boost-row .help { margin: 3px 0 0; }
+.boost-pill { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-weight: 700; font-size: 12.5px; user-select: none; }
+.boost-pill input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.boost-pill:has(input:checked), .boost-pill.on { background: var(--amber); border-color: var(--amber); color: var(--bg); }
+.boost-pill:has(input:focus-visible) { outline: 2px solid var(--amber); outline-offset: 2px; }
+/* copy trade: one card per wallet */
+.wcard { border: 1px solid var(--line); border-radius: var(--radius); margin: 0 0 6px; background: var(--panel); }
+.wcard > summary { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; list-style: none; }
+.wcard > summary::-webkit-details-marker { display: none; }
+.wcard > summary b { white-space: nowrap; }
+.wsum { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.wdot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+.wdot.on { background: var(--green); }
+.wbody { padding: 0 10px 10px; }
+.wbody code { font-size: 11px; word-break: break-all; }
+.wadd { display: flex; gap: 6px; margin: 6px 0 2px; }
+.wadd input { min-width: 0; }
+.wadd input:first-child { flex: 2; }
+.wadd input:nth-child(2) { flex: 1; }
+.link.danger { color: var(--red); margin-top: 6px; }
+/* positions */
+.pos { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; margin: 0 0 8px; background: var(--panel); }
+.pos.up { border-left: 3px solid var(--up); }
+.pos.down { border-left: 3px solid var(--red); }
+.pos-top { display: flex; align-items: center; gap: 6px; }
+.pos-top a { color: inherit; text-decoration: none; }
+.pos-pnl { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pos.up .pos-pnl { color: var(--up); }
+.pos.down .pos-pnl { color: var(--red); }
+.pos .help { margin: 3px 0 0; }
+.pos-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+
+.wadd input { background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 7px 8px; color: var(--text); }

@@ -1,4 +1,4 @@
-/* Side panel part of the callout automode: its settings (Settings → Callouts) and its status card on the Callouts tab.
+/* Side panel part of the callout automode: its settings (Trade → Auto callouts) and its status card on the Callouts tab.
    The filters shown here are Hatchr's own, separate from Axiom's; an Axiom Pulse filter export can be imported into them. */
 (() => {
   "use strict";
@@ -34,7 +34,6 @@
   function statusLine() {
     if (!loaded) return { tone: "", text: "…" };
     if (!saved.enabled && !saved.ownBuys) return { tone: "", text: "Off" };
-    if (!mainOn) return { tone: "warn", text: "Hatchr is switched off, so this is off too." };
     const s = state || {};
     if (s.paused) return { tone: "bad", text: (s.log || []).find(l => l.kind === "error")?.text || "Paused.", resume: true };
     const queue = s.pending || [], going = queue.find(p => !isWaiting(p)), held = queue.filter(isWaiting);
@@ -120,28 +119,36 @@
     return `
       <div id="caStatus">${statusHtml()}</div>
       <p class="help" style="margin-top:0">Two switches that work on their own or together. Both follow the TEST / LIVE switch at the top: in TEST nothing is bought or posted, the activity list shows what would have happened. Hatchr never sells here: selling stays your decision.</p>
-      ${check("c", "ownBuys", "Call out a coin right after I buy it myself", "When your Hatchr wallet, or the wallet you entered on the Callouts tab, buys a pump.fun coin anywhere (pump.fun, Axiom…), its callout goes out straight away. Coins you already hold when you switch this on are left alone. Not limited by the minutes and per-day numbers below.")}
-      <div class="fld" id="caOwnFld" ${draft.ownBuys ? "" : "hidden"}><label for="ca-ownTemplate">Text for your own buys</label><textarea id="ca-ownTemplate" data-c="ownTemplate" rows="2" maxlength="2000">${esc(draft.ownTemplate)}</textarea></div>
+      <p class="help tr-hint" data-if="!ownBuys,!enabled">Switch on <b>Call out my own buys</b> and/or <b>Auto buy + call out</b> at the top of this page.</p>
+      <section class="tr-sec" data-if="ownBuys"><h4 class="tr-h">Your own buys</h4>
+      <div class="fld"><label for="ca-ownTemplate">Text for your own buys</label><textarea id="ca-ownTemplate" data-c="ownTemplate" rows="2" maxlength="2000">${esc(draft.ownTemplate)}</textarea></div>
       <div class="grid2">${numField("ownDelaySec", "Your buys: wait before the callout (seconds)", "0 = straight away.")}${numField("ownMinMcUsd", "Your buys: only once market cap reaches ($)", "Empty = no condition.", "any", "no condition")}</div>
-      ${check("c", "keepTab", "Keep a pump.fun tab open in the background", "A callout has to leave from a pump.fun tab. With none open, Chrome first opens and loads one for every callout, which costs a few seconds. On: Hatchr keeps one small pinned tab ready (LIVE only). You can also just keep pump.fun open yourself.")}
-      ${check("c", "enabled", "Buy and call out automatically", "When a new pump.fun coin passes the filters below, Hatchr buys the smallest position pump.fun accepts for a callout, checks that your wallet really holds it, and posts the callout.")}
+      </section>
+      <div data-if="ownBuys|enabled">${check("c", "keepTab", "Keep a pump.fun tab open in the background", "A callout has to leave from a pump.fun tab. With none open, Chrome first opens and loads one for every callout, which costs a few seconds. On: Hatchr keeps one small pinned tab ready (LIVE only). You can also just keep pump.fun open yourself.")}</div>
+      <section class="tr-sec" data-if="enabled"><h4 class="tr-h">Automatic buys</h4>
+      <p class="help tr-hint">When a new pump.fun coin passes the filters below, Hatchr buys the smallest position pump.fun accepts for a callout, checks that your wallet really holds it, and posts the callout.</p>
       <div class="grid2">${numField("autoDelaySec", "Automatic buys: wait before the callout (seconds)", "0 = straight away.")}${numField("autoMinMcUsd", "Automatic buys: only once market cap reaches ($)", "Empty = no condition. While a coin waits, the next coins are still bought.", "any", "no condition")}</div>
       ${numField("waitMaxMin", "Stop waiting for the market cap after (minutes)", "A coin that has not reached the market cap by then is not called out (it stays in your wallet). Empty = keep waiting for as long as you hold it. If you sell it meanwhile, it is not called.", "any", "never")}
       <div class="warnbox">Every buy costs real SOL plus trading and network fees, and most new coins go to zero. pump.fun pays callout rewards on how your followers do after a call, and pays less the more often you call, so strict filters and few callouts work better than many.</div>
       <div class="grid2">${numField("buyUsd", "Buy size ($)", "Any amount. pump.fun only takes a callout for a coin you hold $1 of, so under about 1.2 the callout is usually refused after fees.")}${numField("slippage", "Slippage (%)", "")}</div>
-      <div class="grid2">${numField("priorityFee", "Priority fee (SOL)", "Paid in full on every buy.")}${numField("reserveSol", "Always keep in wallet (SOL)", "Buying stops when the balance would go under this. 0 = spend down to nothing.")}</div>
+      ${check("c", "boost", "⚡ Boost: the priority fee follows the network", "Pays what the network asks right now for a fast landing, never more than 0.003 SOL, instead of a fixed fee.")}
+      <div class="grid2"><div data-if="!boost">${numField("priorityFee", "Priority fee (SOL)", "Paid in full on every buy.")}</div>${numField("reserveSol", "Always keep in wallet (SOL)", "Buying stops when the balance would go under this. 0 = spend down to nothing.")}</div>
       <div class="grid2">${numField("minIntervalMin", "Minutes between callouts", "The automatic buys wait this long after a callout. 0 = no waiting: the next coin that passes is bought straight away.")}${numField("maxPerDay", "Callouts per day", "0 = no daily limit.")}</div>
+      </section>
+      <section class="tr-sec" data-if="ownBuys|enabled"><h4 class="tr-h">Callout text</h4>
       <div class="fld"><label for="ca-textMode">Text the two switches send</label>
         <select id="ca-textMode" data-c="textMode"><option value="template" ${draft.textMode === "template" ? "selected" : ""}>The one text set for each switch</option><option value="list" ${draft.textMode === "list" ? "selected" : ""}>A random one of my callout texts (below)</option><option value="auto" ${draft.textMode === "auto" ? "selected" : ""}>Hatchr's AI texts (when the AI is set up)</option></select></div>
-      <div class="fld" id="caTplFld" ${draft.textMode === "template" ? "" : "hidden"}><label for="ca-template">Text for automatic buys</label><textarea id="ca-template" data-c="template" rows="2" maxlength="2000">${esc(draft.template)}</textarea>
+      <div class="fld" data-if="textMode=template"><label for="ca-template">Text for automatic buys</label><textarea id="ca-template" data-c="template" rows="2" maxlength="2000">${esc(draft.template)}</textarea>
         <div class="help">{ticker} becomes $TICKER, {name} the coin's name. Your followers read this, so keep it true.</div></div>
 
-      <h4 class="ca-h">My callout texts</h4>
+      </section>
+      <section class="tr-sec"><h4 class="tr-h">My callout texts</h4>
       <div class="fld"><textarea id="ca-texts" data-c="texts" rows="6" spellcheck="false" placeholder="One text per line">${esc(draft.texts.join("\n"))}</textarea>
         <div class="help">One text per line, as many as you like. {ticker} becomes $TICKER, {name} the coin's name. These are the ready texts in the callout window on the Callouts tab (three at a time, "New texts" shuffles), in place of Hatchr's built-in ones. Empty the box to get the built-in ones back.</div></div>
       ${check("c", "textsOnly", "Always offer my texts in the callout window", "Off: the AI's texts are shown when the AI is set up and answers, yours otherwise. On: always yours, and the window opens without waiting for the AI.")}
 
-      <h4 class="ca-h">Filters</h4>
+      </section>
+      <section class="tr-sec" data-if="enabled"><h4 class="tr-h">Filters</h4>
       <p class="help" style="margin-top:0">These are Hatchr's own filters, separate from the ones in Axiom. A coin has to pass every one that is filled in; anything Hatchr cannot measure counts as not passed. Leave a box empty for no limit.</p>
       <div class="ca-import">
         <select id="caTab" aria-label="Axiom column"><option value="newPairs">New Pairs</option><option value="finalStretch">Final Stretch</option><option value="migrated">Migrated</option></select>
@@ -158,7 +165,7 @@
       <div class="grid2">${check("f", "anySocial", "Has at least one link")}${check("f", "twitter", "Has X / Twitter")}</div>
       <div class="grid2">${check("f", "website", "Has a website")}${check("f", "telegram", "Has Telegram")}</div>
 
-      <h4 class="ca-h">Copies and vamps</h4>
+      <h4 class="tr-sub">Copies and vamps</h4>
       ${check("f", "cloneGuard", "Skip copies", "Compares every new coin with the ones Hatchr saw before it. Not part of Axiom's filters, so an import leaves this as it is.")}
       <div class="grid2">
         <div class="fld"><label for="ca-cloneWindowMin">Look back (minutes)</label><input id="ca-cloneWindowMin" data-fn="cloneWindowMin" type="number" min="0" step="any" value="${esc(val(f.cloneWindowMin))}"/><div class="help">How far back Hatchr remembers earlier coins when it checks for copies. 180 = a coin is a copy if the same name, ticker or picture appeared in the last 3 hours. 0 = remembers nothing, so no coin counts as a copy.</div></div>
@@ -169,7 +176,8 @@
         <div class="fld"><label for="ca-maxDevCoins">Other coins by the same dev allowed</label><input id="ca-maxDevCoins" data-fn="maxDevCoins" type="number" min="0" step="any" placeholder="no limit" value="${esc(val(f.maxDevCoins))}"/><div class="help">How many other coins the same dev may have launched in the look-back time. Empty = no limit (a dev with 3,000 coins still passes).</div></div>
       </div>
 
-      <div class="onboard-row"><button data-ca="save">Save</button><button class="ghost" data-ca="reset">Reset filters</button></div>
+      </section>
+      <div class="onboard-row"><button data-ca="save">Save</button><button class="ghost" data-ca="reset" data-if="enabled">Reset filters</button></div>
       <div id="caNote" class="help">${formNote}</div>
       <p class="help">Everything on this page (both switches' settings, filters, your callout texts) and your hidden coins are part of Hatchr's backup: Settings → Account → Export.</p>
       <details class="ca-details"${activityOpen() ? " open" : ""}><summary>Activity</summary><div id="caLog">${logHtml(40)}</div><button class="link" data-ca="clearLog">Clear</button></details>`;
@@ -191,6 +199,13 @@
     if (!box) return;
     box.innerHTML = formHtml();
     box.dataset.ready = "1";
+    showWhen(box);
+  }
+  // sections follow the two switches (at the top of the tab) and the text mode (sidepanel.js has the rule language)
+  function showWhen(box = $("#coAutoBox")) {
+    if (!box || !globalThis.HatchrWhen) return;
+    const vals = { enabled: !!draft.enabled, ownBuys: !!draft.ownBuys, textMode: (box.querySelector("#ca-textMode") || {}).value || draft.textMode, boost: (box.querySelector("#ca-boost") || {}).checked };
+    box.querySelectorAll("[data-if]").forEach(el => { el.hidden = !globalThis.HatchrWhen(el.dataset.if, vals); });
   }
   function refreshStatus() {
     renderCard();
@@ -279,7 +294,6 @@
     try {
       const { settings } = await chrome.storage.local.get("settings");
       dryRun = !settings || settings.dryRun !== false;
-      mainOn = !settings || settings.watching !== false;
     } catch { /* keep what we had */ }
   }
 
@@ -357,8 +371,7 @@
     const box = e.target.closest("#coAutoBox");
     if (!box || e.target.id === "caTab") return;
     dirty = true; draft = readForm(box);
-    if (e.target.id === "ca-textMode") { const fld = $("#caTplFld"); if (fld) fld.hidden = e.target.value !== "template"; }
-    if (e.target.id === "ca-ownBuys") { const fld = $("#caOwnFld"); if (fld) fld.hidden = !e.target.checked; }
+    showWhen(box);
   });
   // Keep what is typed, so it survives the form being rebuilt.
   document.addEventListener("input", e => { const box = e.target.closest("#coAutoBox"); if (box && e.target.id !== "caPaste") { dirty = true; draft = readForm(box); } });
@@ -375,23 +388,32 @@
       if (changes.coHidden) { hiddenSet = new Set(Array.isArray(changes.coHidden.newValue) ? changes.coHidden.newValue : []); applyHidden(); }
       // The callout settings changed from outside this form: a backup was imported. Show what was loaded, straight away.
       // (Before, the form kept showing the old values, and pressing Save there wrote them back over the import.)
-      if (changes.coAuto && Date.now() - savingAt > 2000) {
+      // Only a switch was flipped (the switches at the top of the tab): the form follows, other unsaved edits stay.
+      const same = (a, b) => JSON.stringify({ ...a, enabled: 0, ownBuys: 0 }) === JSON.stringify({ ...b, enabled: 0, ownBuys: 0 });
+      if (changes.coAuto && Date.now() - savingAt > 2000 && saved && same(F.cleanConfig(changes.coAuto.newValue), saved)) {
+        const next = F.cleanConfig(changes.coAuto.newValue);
+        saved = next; draft = { ...draft, enabled: next.enabled, ownBuys: next.ownBuys };
+        renderForm(); renderCard();
+      } else if (changes.coAuto && Date.now() - savingAt > 2000) {
         saved = F.cleanConfig(changes.coAuto.newValue); draft = F.cleanConfig(saved); dirty = false; importNote = "";
         formNote = changes.coAutoWhy && changes.coAutoWhy.newValue && changes.coAutoWhy.newValue.why === "no-wait"
           ? "Minutes between callouts was moved from the old default of 180 to 0 (no waiting)."
           : "Callout settings, filters and texts were loaded from your backup. Both switches arrive off: switch on what you want and press Save.";
         renderForm(); renderCard();
       }
-      if (changes.settings) { const s = changes.settings.newValue; dryRun = !s || s.dryRun !== false; mainOn = !s || s.watching !== false; refreshStatus(); }
+      if (changes.settings) { const s = changes.settings.newValue; dryRun = !s || s.dryRun !== false; refreshStatus(); }
     });
   } catch { /* no storage events: the poll below keeps it fresh */ }
 
-  async function poll() {
-    if (document.visibilityState === "hidden") return;
+  // Only while something of it is on screen: its page (Trade → Auto callouts) or its card (Callouts tab).
+  const onScreen = () => { const a = $("#coAutoBox"), b = $("#coAutoCard"); return (a && a.offsetParent !== null) || (b && b.offsetParent !== null); };
+  async function poll(force) {
+    if (document.visibilityState === "hidden" || (!force && loaded && !onScreen())) return;
     await load();
     mount();
     refreshStatus();
   }
-  poll();
+  poll(true);
   setInterval(poll, 5000);
+  document.addEventListener("click", e => { if (e.target.closest && e.target.closest(".tabs button, #subtabs button")) setTimeout(() => poll(), 0); });
 })();

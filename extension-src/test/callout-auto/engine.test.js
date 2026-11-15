@@ -213,7 +213,7 @@ const t = async (name, fn) => { await fn(); count++; console.log("ok  " + name);
     assert.strictEqual((await e.state()).pending.length, 0);
   });
 
-  await t("safety stops: low balance, no wallet, daily cap, main switch off", async () => {
+  await t("safety stops: low balance, no wallet, daily cap; the Feed's switch does not stop it", async () => {
     const e = await boot({ config: cfg(), balanceSol: 0.02 });
     e.create(MINT(1)); await sleep(30); e.trades(MINT(1)); await e.settle();
     assert.strictEqual(e.w.sent.length, 0); assert.strictEqual((await e.state()).paused, "low-balance");
@@ -225,10 +225,13 @@ const t = async (name, fn) => { await fn(); count++; console.log("ok  " + name);
     e3.w.clock += 11 * 60000;
     e3.create(MINT(2), { name: "Cat", symbol: "CAT" }); await sleep(30); e3.trades(MINT(2)); await e3.settle();
     assert.strictEqual(e3.w.sent.length, 1, "1 per day");
+    // auto callouts have their own switch; turning off launching from posts (the Feed's switch) leaves them running
     const e4 = await boot({ config: cfg(), settings: { watching: false } });
-    assert.strictEqual(e4.api.wantsStream(), false);
+    assert.strictEqual(e4.api.wantsStream(), true);
     e4.create(MINT(1)); await sleep(30); e4.trades(MINT(1)); await e4.settle();
-    assert.strictEqual(e4.w.sent.length, 0);
+    assert.strictEqual(e4.w.sent.length, 1);
+    const e4off = await boot({ config: cfg({ enabled: false }), settings: { watching: true } });
+    assert.strictEqual(e4off.api.wantsStream(), false, "its own switch off: off");
     const e5 = await boot({ config: cfg(), perm: false });
     e5.create(MINT(1)); await sleep(30); e5.trades(MINT(1)); await e5.settle();
     assert.strictEqual(e5.w.sent.length, 0, "no buy when the callout could not be sent anyway");

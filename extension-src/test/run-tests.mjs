@@ -1560,6 +1560,25 @@ console.log("Main switch (Hatchr off)");
     await settle();
     assert.equal(env.store.feed.length, 2, "on again: posts arrive");
   });
+  await t("Feed off, CA buy on: the Axiom tab is opened and read, its status is shown, the alarm stays; nothing is launched", async () => {
+    const { env, msg } = await boot(baseSettings({ mode: "auto", watching: false, axiomEnabled: false }));
+    await settle();
+    assert.ok(!env.chrome.alarms.set.has("axiom-watchdog"), "everything off: no alarm");
+    env.chrome.tabs.list = []; env.chrome.tabs.created.length = 0;
+    await env.chrome.storage.local.set({ caBuy: { enabled: true, handles: ["caller"] } });
+    await settle(500);
+    assert.ok(env.chrome.alarms.set.has("axiom-watchdog"), "CA buy on: the half-minute check is back");
+    assert.equal(env.chrome.tabs.created.length, 1, "CA buy on: an Axiom tab is opened (Axiom off as a launch source does not matter)");
+    msg({ type: "axiomStatus", status: { live: true, hooked: true, lastTweetAt: 1 } });
+    await settle();
+    assert.ok(env.store.axiomStatus && env.store.axiomStatus.live, "the Axiom status is kept, so the CA buy page can show it");
+    msg({ type: "post", post: post("903", "Pepe rocks") });
+    await settle();
+    assert.equal((env.store.feed || []).length, 0, "nothing reaches the Feed or is launched while the Feed is off");
+    await env.chrome.storage.local.set({ caBuy: { enabled: false, handles: ["caller"] } });
+    await settle(500);
+    assert.ok(!env.chrome.alarms.set.has("axiom-watchdog"), "CA buy off again: no alarm");
+  });
   await t("off: the alarm stays only while a vanity search runs", async () => {
     const { env, msg } = await boot(baseSettings({ mode: "manual", watching: false }));
     await settle();
@@ -1579,7 +1598,7 @@ console.log("Main switch (Hatchr off)");
       window: { scrollY: 0 }, location: { pathname: "/home" }, Node: { TEXT_NODE: 3 }, Date, atob, setTimeout, clearTimeout,
       document: { documentElement: { scrollTop: 0 }, querySelector: (q) => (q.includes("pillLabel") ? pill : null), querySelectorAll: () => [] },
       chrome: { runtime: { sendMessage: async (m) => { if (m.type === "post") st.sent++; return null; } },
-        storage: { local: { get: async (k) => (k === "settings" ? { settings: { watching: false } } : {}), remove: async () => {} }, onChanged: { addListener: (f) => { st.changed = f; } } } },
+        storage: { local: { get: async (k) => ([].concat(k).includes("settings") ? { settings: { watching: false } } : {}), remove: async () => {} }, onChanged: { addListener: (f) => { st.changed = f; } } } },
       MutationObserver: class { observe() { st.observing = true; } disconnect() { st.observing = false; } },
       setInterval: (f) => { const id = ++st.n; st.intervals.add(id); st.tick = f; return id; }, clearInterval: (id) => st.intervals.delete(id),
     });
@@ -1594,6 +1613,13 @@ console.log("Main switch (Hatchr off)");
     st.changed({ settings: { newValue: { watching: false } } }, "local");
     assert.equal(st.observing, false, "off again: observer stopped");
     assert.equal(st.intervals.size, 0, "off again: timer stopped");
+    // CA buy has its own switch: with launching off, X tabs are still read for the accounts it buys from
+    st.changed({ caBuy: { newValue: { enabled: true, handles: ["caller"] } } }, "local");
+    assert.equal(st.observing, true, "CA buy on: the page is observed");
+    st.changed({ caBuy: { newValue: { enabled: true, handles: [] } } }, "local");
+    assert.equal(st.observing, false, "CA buy without accounts: nothing to read");
+    st.changed({ caBuy: { newValue: { enabled: true, handles: ["caller"] } }, settings: { newValue: { watching: false, xEnabled: false } } }, "local");
+    assert.equal(st.observing, false, "X tabs switched off in Sources: not read for CA buy either");
   });
   await t("off: the Axiom page script is idle and shows the tracker panel again; on: it reads the tweet stream and hides the panel", async () => {
     const st = { timers: new Set(), n: 0, observing: false, handlers: [], posted: [], styles: [] };
@@ -1640,7 +1666,7 @@ console.log("Main switch (Hatchr off)");
     vm.runInNewContext(readFileSync(new URL("../src/content-axiom.js", import.meta.url), "utf8"), {
       window: win, location: { origin: "https://axiom.trade" }, Number, Date, Array,
       setInterval: () => { const id = ++st.n; st.intervals.add(id); return id; }, clearInterval: (id) => st.intervals.delete(id), setTimeout: () => 0,
-      chrome: { runtime: { sendMessage: async () => null }, storage: { local: { get: async () => ({ settings: st.settings }) }, onChanged: { addListener: (f) => { st.changed = f; } } } },
+      chrome: { runtime: { sendMessage: async () => null }, storage: { local: { get: async () => ({ settings: st.settings, caBuy: st.caBuy }) }, onChanged: { addListener: (f) => { st.changed = f; } } } },
     });
     await new Promise((r) => setTimeout(r, 10));
     assert.deepEqual({ ...st.posted.at(-1) }, { __t2c: "axiom-config", on: false, keep: false, hide: false });
@@ -1654,6 +1680,20 @@ console.log("Main switch (Hatchr off)");
     st.changed({ settings: {} }, "local");
     await new Promise((r) => setTimeout(r, 10));
     assert.equal(st.intervals.size, 0, "off again: timer stopped");
+    // CA buy on, launching off (and even Axiom off as a launch source): Axiom is read and its tracker kept open
+    st.settings = { watching: false, axiomEnabled: false }; st.caBuy = { enabled: true, handles: ["caller"] };
+    st.changed({ caBuy: {} }, "local");
+    await new Promise((r) => setTimeout(r, 10));
+    assert.deepEqual({ ...st.posted.at(-1) }, { __t2c: "axiom-config", on: true, keep: true, hide: true });
+    st.caBuy = { enabled: false, handles: ["caller"] };
+    st.changed({ caBuy: {} }, "local");
+    await new Promise((r) => setTimeout(r, 10));
+    assert.deepEqual({ ...st.posted.at(-1) }, { __t2c: "axiom-config", on: false, keep: false, hide: false });
+    // launching on but Axiom off as a launch source: read (as before), tracker not kept open
+    st.settings = { watching: true, axiomEnabled: false }; st.caBuy = null;
+    st.changed({ settings: {} }, "local");
+    await new Promise((r) => setTimeout(r, 10));
+    assert.deepEqual({ ...st.posted.at(-1) }, { __t2c: "axiom-config", on: true, keep: false, hide: true });
   });
 }
 console.log("Callouts (pump.fun)");

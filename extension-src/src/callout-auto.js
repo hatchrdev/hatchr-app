@@ -46,6 +46,8 @@
     stateDirty = true;
   }
   function log(kind, text, extra = {}) {
+    // buys and callouts also go to the phone, when that is set up (pump-alerts.js)
+    if (kind === "buy" || kind === "call") { try { globalThis.HatchrPush && globalThis.HatchrPush.event(`${kind === "call" ? "📣" : "🛒"} ${text}${extra.mint ? `\nhttps://pump.fun/coin/${extra.mint}` : ""}`); } catch { /* a bonus */ } }
     st.log.unshift({ at: now(), kind, text: String(text).slice(0, 300), ...extra });
     if (st.log.length > LOG_SIZE) st.log.length = LOG_SIZE;
     stateDirty = true;
@@ -488,7 +490,7 @@
     mainAt = now();
     try {
       const { settings } = await chrome.storage.local.get("settings");
-      mainOn = !settings || settings.watching !== false;
+      mainOn = true; // own switches (enabled / ownBuys); the Feed's switch only stops launching from posts
       testMode = !settings || settings.dryRun !== false;
     } catch { /* keep the last answer */ }
     warmTab();
@@ -548,10 +550,14 @@
 
   // ---------- buy ----------
   async function buildBuy(pub, mint, amountSol) {
+    let fee = Number(cfg.priorityFee);
+    if (cfg.boost && globalThis.HatchrRoutes) { // ⚡ Boost: what the network asks now; never waited for long
+      try { const s = await core().settings(); fee = (await Promise.race([globalThis.HatchrRoutes.feeEstimate(s.rpcUrl).then(x => x.fee), wait(400).then(() => fee)])) || fee; } catch { /* the fixed fee */ }
+    }
     const response = await fetch("https://pumpportal.fun/api/trade-local", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ publicKey: pub, action: "buy", mint, denominatedInSol: "true", amount: amountSol, slippage: Number(cfg.slippage), priorityFee: Number(cfg.priorityFee), pool: "pump" })
+      body: JSON.stringify({ publicKey: pub, action: "buy", mint, denominatedInSol: "true", amount: amountSol, slippage: Number(cfg.slippage), priorityFee: fee, pool: "pump" })
     });
     if (response.status !== 200) throw new Error(`PumpPortal ${response.status}: ${(await response.text()).slice(0, 200) || response.statusText}`);
     return core().Tx.deserialize(new Uint8Array(await response.arrayBuffer()));
@@ -564,12 +570,11 @@
     let sent = false;
     try {
       const settings = await C.settings();
-      if (!C.watching(settings)) return;
       const secret = await C.secret();
       if (!secret) return pause("no-wallet", "Auto callouts paused: there is no Hatchr wallet. Create or import one in Settings → Account.");
       const keypair = C.keypair(secret), pub = keypair.publicKey.toBase58();
       if (!settings.dryRun && !C.isDesktop && chrome.permissions && !await chrome.permissions.contains({ origins: PUMP_ORIGINS })) {
-        return pause("no-permission", "Auto callouts paused: Hatchr is not allowed to reach pump.fun yet. Open Settings → Callouts and switch the automode on again to allow it.");
+        return pause("no-permission", "Auto callouts paused: Hatchr is not allowed to reach pump.fun yet. Open Trade → Auto callouts and switch it on again to allow it.");
       }
       const price = await C.solPrice();
       if (!price || !(price.usd > 0)) throw new Error("no SOL price right now");
@@ -876,7 +881,7 @@
         case "not-signed-in":
           return pause("not-signed-in", `Auto callouts paused: sign in on pump.fun${C.isDesktop ? " in Hatchr's Pump.fun window" : " in this Chrome profile"}, then press Resume. ${label} stays queued.`);
         case "no-permission":
-          return pause("no-permission", `Auto callouts paused: Hatchr is not allowed to reach pump.fun. Switch the automode on again in Settings → Callouts to allow it. ${label} stays queued.`);
+          return pause("no-permission", `Auto callouts paused: Hatchr is not allowed to reach pump.fun. Switch the automode on again in Trade → Auto callouts to allow it. ${label} stays queued.`);
         case "no-pump-page":
           item.tries++;
           if (item.tries >= 3) return pause("no-pump-page", `Auto callouts paused: pump.fun could not be opened to send the callout. ${label} stays queued; press Resume to try again.`);
@@ -979,7 +984,7 @@
           config = { ...config, minIntervalMin: 0 };
           st.nextSlotAt = 0;
           await chrome.storage.local.set({ [CONFIG_KEY]: F.cleanConfig(config), coAutoWhy: { why: "no-wait", at: now() } });
-          log("info", "The 180-minute wait between automatic buys is switched off (it was the old default, not something you set). Minutes between callouts is 0 now; change it under Settings → Callouts if you want a wait.");
+          log("info", "The 180-minute wait between automatic buys is switched off (it was the old default, not something you set). Minutes between callouts is 0 now; change it under Trade → Auto callouts if you want a wait.");
         }
       }
       await applyConfig(config);
@@ -990,10 +995,8 @@
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === "local" && changes[CONFIG_KEY] && ready) applyConfig(changes[CONFIG_KEY].newValue).catch(() => {});
       if (area === "local" && changes.settings) {
-        // Hatchr's main switch: off means this automode is off too, stream included.
-        const next = changes.settings.newValue, on = !next || next.watching !== false;
+        // This automode has its own switches; the Feed's switch (launching from posts) does not stop it.
         mainAt = 0;
-        if (on !== mainOn) { mainOn = on; if (!on) stopWatching(); if (ready && (cfg.enabled || cfg.ownBuys)) core()?.reconnect().catch(() => {}); }
         if (ready) loadWallets().catch(() => {}); // "Wallet you use on pump.fun" may have changed
       }
       if (area === "local" && changes.walletSecret && ready) loadWallets().catch(() => {});
@@ -1029,6 +1032,24 @@
     });
   } catch (e) { console.warn("callout automode listeners", e); }
 
-  globalThis.HatchrCalloutAuto = Object.freeze({ wantsStream, onStream, onOpen, windowTexts, scanHeld });
+  // ---------- buys made by another part of Hatchr (CA buy) ----------
+  // Before it sends: this coin is being bought by Hatchr, so the "your own buys" watcher must not take it for yours.
+  function expectBuy(mint) { st.autoMints = [...st.autoMints.filter(m => m !== mint), mint].slice(-200); stateDirty = true; }
+  // After it confirmed: show it under "Coins you hold" at once, and call it out if that was asked for.
+  function boughtElsewhere(mint, wallet, amount, callout) {
+    noteRecent(mint, wallet, amount);
+    refreshSoon();
+    if (!callout || !/pump$/.test(mint) || st.pending.some(p => p.mint === mint) || st.called.includes(mint)) return;
+    const known = index.find(mint) || {};
+    st.pending.push({ mint, name: known.name || "", ticker: known.ticker || "", description: "", image: "", amount: 0, seen: amount > 0 ? amount : 0, wallet,
+      boughtAt: now(), own: true, via: "CA buy", tries: 0, retryAt: 0 });
+    stateDirty = true;
+    startTicker();
+    kick(0);
+    if (cfg.ownDelaySec > 0) kick(cfg.ownDelaySec * 1000 + 30);
+    save(true);
+  }
+
+  globalThis.HatchrCalloutAuto = Object.freeze({ wantsStream, onStream, onOpen, windowTexts, scanHeld, expectBuy, boughtElsewhere });
   init();
 })();

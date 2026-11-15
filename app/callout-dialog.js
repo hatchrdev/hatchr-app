@@ -60,10 +60,10 @@
           options.appendChild(button);
         }
         if (response.by === "custom") {
-          // Your own texts, saved under Settings → Callouts.
+          // Your own texts, saved under Trade → Auto callouts.
           const info = document.createElement("div");
           info.className = "muted co-wait";
-          info.textContent = t(response.error ? "The AI didn't answer, so these are your own texts (Settings → Callouts)." : "Your own texts. Change them under Settings → Callouts.");
+          info.textContent = t(response.error ? "The AI didn't answer, so these are your own texts (Trade → Auto callouts)." : "Your own texts. Change them under Trade → Auto callouts.");
           options.appendChild(info);
         } else if (response.by !== "ai") {
           const info = document.createElement("div");

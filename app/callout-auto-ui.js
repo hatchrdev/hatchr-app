@@ -1,147 +1,41 @@
-/* Side panel part of the callout automode: its settings (Settings → Callouts) and its status card on the Callouts tab.
-   The filters shown here are Hatchr's own, separate from Axiom's; an Axiom Pulse filter export can be imported into them. */
-(() => {
-  "use strict";
-  const F = globalThis.HatchrCalloutFilters;
-  if (!F) return;
-  const PUMP_ORIGINS = ["https://pump.fun/*", "https://frontend-api-v3.pump.fun/*"];
-  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const send = message => chrome.runtime.sendMessage(message).then(r => { if (!r || !r.ok) throw new Error(r && r.error || "No answer from Hatchr"); return r.data; });
-  const $ = (sel, root = document) => root.querySelector(sel);
-
-  let saved = F.cleanConfig(null);   // what the background runs on
-  let draft = F.cleanConfig(null);   // what the form shows (may have unsaved changes)
-  let state = null, live = false, wallets = [], walletFeed = false, dryRun = true, mainOn = true, loaded = false, dirty = false;
-
-  // Whether the Activity list is folded open is your choice and stays that way (it used to spring open again on every refresh).
-  const OPEN_KEY = "hatchr.caActivityOpen";
-  const activityOpen = () => { try { return localStorage.getItem(OPEN_KEY) !== "0"; } catch { return true; } };
-  document.addEventListener("toggle", e => {
-    if (!e.target.matches || !e.target.matches("details.ca-details")) return;
-    try { localStorage.setItem(OPEN_KEY, e.target.open ? "1" : "0"); } catch { /* private mode: it just is not remembered */ }
-    document.querySelectorAll("details.ca-details").forEach(d => { if (d !== e.target && d.open !== e.target.open) d.open = e.target.open; });
-  }, true);
-  const shortKey = w => `${w.slice(0, 4)}…${w.slice(-4)}`;
-  let importNote = "", formNote = "";
-
-  // ---------- status ----------
-  const span = ms => {
-    const m = Math.max(1, Math.round(ms / 60000));
-    return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
-  };
-  const clock = at => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
-  function statusLine() {
-    if (!loaded) return { tone: "", text: "…" };
-    if (!saved.enabled && !saved.ownBuys) return { tone: "", text: "Off" };
-    if (!mainOn) return { tone: "warn", text: "Hatchr is switched off, so this is off too." };
-    const s = state || {};
-    if (s.paused) return { tone: "bad", text: (s.log || []).find(l => l.kind === "error")?.text || "Paused.", resume: true };
-    const queue = s.pending || [], going = queue.find(p => !isWaiting(p)), held = queue.filter(isWaiting);
-    if (going) return { tone: "ok", text: `${going.own ? "You bought" : "Bought"} ${going.ticker ? "$" + going.ticker : "a coin"}, sending its callout…${held.length ? ` ${held.length} more waiting.` : ""}` };
-    if (held.length && (!saved.enabled || Date.now() < (s.nextSlotAt || 0))) return { tone: "ok", text: `${waitText(held[0])}.${held.length > 1 ? ` ${held.length - 1} more waiting.` : ""}` };
-    if (saved.ownBuys && !wallets.length && !saved.enabled) return { tone: "warn", text: "No wallet to watch yet. Create your Hatchr wallet in Settings → Account, or enter the wallet you use on pump.fun on the Callouts tab." };
-    if (!saved.enabled) return live ? { tone: "ok", text: "Waiting for your next buy. Its callout goes out right after." } : { tone: "warn", text: "Connecting to pump.fun's live stream… Your buys are still picked up within a minute." };
-    if (saved.maxPerDay !== 0 && ((s.callsToday || 0) >= saved.maxPerDay || (s.buysToday || 0) >= saved.maxPerDay)) return { tone: "", text: `Done for today: ${Math.max(s.callsToday || 0, s.buysToday || 0)} of ${saved.maxPerDay}, your "Callouts per day" setting (0 there = no daily limit). Starts again at midnight UTC.` };
-    if (Date.now() < (s.nextSlotAt || 0)) {
-      const left = s.nextSlotAt - Date.now();
-      // This wait is your own "Minutes between callouts" setting (or a short pause after an error), never a time-out by the app.
-      return { tone: "", skip: true, text: saved.minIntervalMin > 0 && left > 600000
-        ? `Next automatic buy in ${span(left)}: your "Minutes between callouts" setting is ${saved.minIntervalMin}. Set it to 0 for no waiting.`
-        : `Next automatic buy in ${left >= 60000 ? span(left) : Math.ceil(left / 1000) + " s"}.` };
-    }
-    if (!live) return { tone: "warn", text: "Connecting to pump.fun's live stream…" };
-    return { tone: "ok", text: `Watching new coins. ${s.watching || 0} being measured right now.` };
-  }
-
-  function statsLine() {
-    const s = state || {};
-    const top = Object.entries(s.skips || {}).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, n]) => `${k} (${n.toLocaleString("en-US")})`);
-    return `Today: ${(s.seen || 0).toLocaleString("en-US")} new coins seen · ${(s.watchedToday || 0).toLocaleString("en-US")} measured · ${s.buysToday || 0} bought · ${s.callsToday || 0} called out.` +
-      (top.length ? ` Most were skipped for: ${top.join(", ")}.` : "");
-  }
-
-  function statusHtml() {
-    const st = statusLine();
-    const on = saved.enabled || saved.ownBuys;
-    const mode = on ? (dryRun ? '<span class="ca-pill test">TEST</span>' : '<span class="ca-pill live">LIVE</span>') : "";
-    const watching = saved.ownBuys ? (wallets.length ? ` (watching ${wallets.map(shortKey).join(", ")}${walletFeed ? ", live" : live ? ", via pump.fun's stream and a check every 10 s" : ", checked every 10 s"})` : " (no wallet to watch)") : "";
-    const parts = on ? `<div class="help">Auto buy: ${saved.enabled ? "on" : "off"} · Your own buys: ${saved.ownBuys ? "on" : "off"}${esc(watching)}</div>` : "";
-    return `<div class="ca-status ${st.tone}"><div><b>Auto callouts</b> ${mode}</div><div class="ca-now">${esc(st.text)}</div>` +
-      (st.resume ? '<button class="ghost" data-ca="resume">Resume</button>' : "") + (st.skip ? '<button class="ghost" data-ca="skipWait">Skip the wait</button>' : "") + parts +
-      (saved.enabled ? `<div class="help">${esc(statsLine())}</div>` : "") + "</div>";
-  }
-
-  function logHtml(limit) {
-    const rows = ((state && state.log) || []).slice(0, limit);
-    if (!rows.length) return '<p class="help">Nothing yet.</p>';
-    return '<div class="ca-log">' + rows.map(r => {
-      const links = [r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">callout</a>` : "",
-        r.mint ? `<a href="https://pump.fun/coin/${esc(r.mint)}" target="_blank" rel="noopener noreferrer">coin</a>` : ""].filter(Boolean).join(" · ");
-      return `<div class="ca-row ${esc(r.kind)}"><span class="ca-time">${esc(clock(r.at))}</span><span>${esc(r.text)}${links ? ` <span class="ca-links">${links}</span>` : ""}</span></div>`;
-    }).join("") + "</div>";
-  }
-
-  // ---------- the card on the Callouts tab ----------
-  let cardHtml = "";
-  function renderCard() {
-    const box = $("#coAutoCard");
-    if (!box) return;
-    const html = `<div class="ca-card">${statusHtml()}
-      ${saved.enabled || saved.ownBuys || ((state && state.log) || []).length ? `<details class="ca-details"${activityOpen() ? " open" : ""}><summary>Activity</summary>${logHtml(8)}</details>` : ""}
-      <button class="link" data-ca="open">${saved.enabled || saved.ownBuys ? "Filters and settings" : "Set up automatic callouts"}</button></div>`;
-    if (html === cardHtml && box.firstChild) return; // nothing changed: leave the page alone
-    cardHtml = html;
-    box.innerHTML = html;
-  }
-
-  // ---------- the settings form ----------
-  const val = v => (v === null || v === undefined ? "" : String(v));
-  const numField = (key, label, help, step = "any", placeholder = "") =>
-    `<div class="fld"><label for="ca-${key}">${esc(label)}</label><input id="ca-${key}" data-c="${key}" type="number" min="0" step="${step}" placeholder="${esc(placeholder)}" value="${esc(val(draft[key]))}"/>${help ? `<div class="help">${esc(help)}</div>` : ""}</div>`;
-  // When does a bought coin's callout go out? (the same rule the background uses)
-  const ruleOf = p => p.own ? { delay: saved.ownDelaySec, minMc: saved.ownMinMcUsd } : { delay: saved.autoDelaySec, minMc: saved.autoMinMcUsd };
-  const isWaiting = p => { const r = ruleOf(p); return Date.now() < p.boughtAt + r.delay * 1000 || (r.minMc !== null && !(p.mcUsd >= r.minMc)); };
-  const money = v => `$${Math.round(v).toLocaleString("en-US")}`;
-  function waitText(p) {
-    const r = ruleOf(p), name = p.ticker ? `$${p.ticker}` : "your coin", left = p.boughtAt + r.delay * 1000 - Date.now(), parts = [];
-    if (left > 0) parts.push(`in ${left >= 90000 ? Math.round(left / 60000) + " min" : Math.ceil(left / 1000) + " s"}`);
-    if (r.minMc !== null && !(p.mcUsd >= r.minMc)) parts.push(`once its market cap reaches ${money(r.minMc)} (${p.mcUsd > 0 ? "now " + money(p.mcUsd) : "reading it…"}${p.offCurve ? ", it left the bonding curve, so that number may be behind" : ""})`);
-    return `${name}: callout ${parts.join(" and ")}`;
-  }
-  const check = (scope, key, label, help) =>
-    `<div class="fld check"><input type="checkbox" id="ca-${key}" data-${scope}="${key}" ${(scope === "c" ? draft : draft.filters)[key] ? "checked" : ""}/><div><label for="ca-${key}">${esc(label)}</label>${help ? `<div class="help">${esc(help)}</div>` : ""}</div></div>`;
-
-  function formHtml() {
-    const f = draft.filters;
-    const ranges = F.RANGES.map(r => `<div class="ca-range"><label title="${esc(r.help || "")}">${esc(r.label)}</label>
-        <input type="number" min="0" step="any" placeholder="min" data-min="${r.key}" value="${esc(val(f[r.key].min))}" aria-label="${esc(r.label)} minimum"/>
-        <input type="number" min="0" step="any" placeholder="max" data-max="${r.key}" value="${esc(val(f[r.key].max))}" aria-label="${esc(r.label)} maximum"/></div>`).join("");
-    return `
-      <div id="caStatus">${statusHtml()}</div>
+(()=>{"use strict";const d=globalThis.HatchrCalloutFilters;if(!d)return;const G=["https://pump.fun/*","https://frontend-api-v3.pump.fun/*"],i=e=>String(e??"").replace(/[&<>"']/g,a=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[a]),S=e=>chrome.runtime.sendMessage(e).then(a=>{if(!a||!a.ok)throw new Error(a&&a.error||"No answer from Hatchr");return a.data}),c=(e,a=document)=>a.querySelector(e);let o=d.cleanConfig(null),r=d.cleanConfig(null),u=null,b=!1,C=[],O=!1,E=!0,le=!0,A=!1,g=!1;const I="hatchr.caActivityOpen",D=()=>{try{return localStorage.getItem(I)!=="0"}catch{return!0}};document.addEventListener("toggle",e=>{if(!(!e.target.matches||!e.target.matches("details.ca-details"))){try{localStorage.setItem(I,e.target.open?"1":"0")}catch{}document.querySelectorAll("details.ca-details").forEach(a=>{a!==e.target&&a.open!==e.target.open&&(a.open=e.target.open)})}},!0);const _=e=>`${e.slice(0,4)}\u2026${e.slice(-4)}`;let y="",f="";const F=e=>{const a=Math.max(1,Math.round(e/6e4));return a>=60?`${Math.floor(a/60)}h ${a%60}m`:`${a}m`},J=e=>new Date(e).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});function X(){if(!A)return{tone:"",text:"\u2026"};if(!o.enabled&&!o.ownBuys)return{tone:"",text:"Off"};const e=u||{};if(e.paused)return{tone:"bad",text:(e.log||[]).find(s=>s.kind==="error")?.text||"Paused.",resume:!0};const a=e.pending||[],t=a.find(s=>!U(s)),n=a.filter(U);if(t)return{tone:"ok",text:`${t.own?"You bought":"Bought"} ${t.ticker?"$"+t.ticker:"a coin"}, sending its callout\u2026${n.length?` ${n.length} more waiting.`:""}`};if(n.length&&(!o.enabled||Date.now()<(e.nextSlotAt||0)))return{tone:"ok",text:`${Z(n[0])}.${n.length>1?` ${n.length-1} more waiting.`:""}`};if(o.ownBuys&&!C.length&&!o.enabled)return{tone:"warn",text:"No wallet to watch yet. Create your Hatchr wallet in Settings \u2192 Account, or enter the wallet you use on pump.fun on the Callouts tab."};if(!o.enabled)return b?{tone:"ok",text:"Waiting for your next buy. Its callout goes out right after."}:{tone:"warn",text:"Connecting to pump.fun's live stream\u2026 Your buys are still picked up within a minute."};if(o.maxPerDay!==0&&((e.callsToday||0)>=o.maxPerDay||(e.buysToday||0)>=o.maxPerDay))return{tone:"",text:`Done for today: ${Math.max(e.callsToday||0,e.buysToday||0)} of ${o.maxPerDay}, your "Callouts per day" setting (0 there = no daily limit). Starts again at midnight UTC.`};if(Date.now()<(e.nextSlotAt||0)){const s=e.nextSlotAt-Date.now();return{tone:"",skip:!0,text:o.minIntervalMin>0&&s>6e5?`Next automatic buy in ${F(s)}: your "Minutes between callouts" setting is ${o.minIntervalMin}. Set it to 0 for no waiting.`:`Next automatic buy in ${s>=6e4?F(s):Math.ceil(s/1e3)+" s"}.`}}return b?{tone:"ok",text:`Watching new coins. ${e.watching||0} being measured right now.`}:{tone:"warn",text:"Connecting to pump.fun's live stream\u2026"}}function Q(){const e=u||{},a=Object.entries(e.skips||{}).sort((t,n)=>n[1]-t[1]).slice(0,4).map(([t,n])=>`${t} (${n.toLocaleString("en-US")})`);return`Today: ${(e.seen||0).toLocaleString("en-US")} new coins seen \xB7 ${(e.watchedToday||0).toLocaleString("en-US")} measured \xB7 ${e.buysToday||0} bought \xB7 ${e.callsToday||0} called out.`+(a.length?` Most were skipped for: ${a.join(", ")}.`:"")}function L(){const e=X(),a=o.enabled||o.ownBuys,t=a?E?'<span class="ca-pill test">TEST</span>':'<span class="ca-pill live">LIVE</span>':"",n=o.ownBuys?C.length?` (watching ${C.map(_).join(", ")}${O?", live":b?", via pump.fun's stream and a check every 10 s":", checked every 10 s"})`:" (no wallet to watch)":"",s=a?`<div class="help">Auto buy: ${o.enabled?"on":"off"} \xB7 Your own buys: ${o.ownBuys?"on":"off"}${i(n)}</div>`:"";return`<div class="ca-status ${e.tone}"><div><b>Auto callouts</b> ${t}</div><div class="ca-now">${i(e.text)}</div>`+(e.resume?'<button class="ghost" data-ca="resume">Resume</button>':"")+(e.skip?'<button class="ghost" data-ca="skipWait">Skip the wait</button>':"")+s+(o.enabled?`<div class="help">${i(Q())}</div>`:"")+"</div>"}function P(e){const a=(u&&u.log||[]).slice(0,e);return a.length?'<div class="ca-log">'+a.map(t=>{const n=[t.url?`<a href="${i(t.url)}" target="_blank" rel="noopener noreferrer">callout</a>`:"",t.mint?`<a href="https://pump.fun/coin/${i(t.mint)}" target="_blank" rel="noopener noreferrer">coin</a>`:""].filter(Boolean).join(" \xB7 ");return`<div class="ca-row ${i(t.kind)}"><span class="ca-time">${i(J(t.at))}</span><span>${i(t.text)}${n?` <span class="ca-links">${n}</span>`:""}</span></div>`}).join("")+"</div>":'<p class="help">Nothing yet.</p>'}let W="";function H(){const e=c("#coAutoCard");if(!e)return;const a=`<div class="ca-card">${L()}
+      ${o.enabled||o.ownBuys||(u&&u.log||[]).length?`<details class="ca-details"${D()?" open":""}><summary>Activity</summary>${P(8)}</details>`:""}
+      <button class="link" data-ca="open">${o.enabled||o.ownBuys?"Filters and settings":"Set up automatic callouts"}</button></div>`;a===W&&e.firstChild||(W=a,e.innerHTML=a)}const $=e=>e==null?"":String(e),h=(e,a,t,n="any",s="")=>`<div class="fld"><label for="ca-${e}">${i(a)}</label><input id="ca-${e}" data-c="${e}" type="number" min="0" step="${n}" placeholder="${i(s)}" value="${i($(r[e]))}"/>${t?`<div class="help">${i(t)}</div>`:""}</div>`,q=e=>e.own?{delay:o.ownDelaySec,minMc:o.ownMinMcUsd}:{delay:o.autoDelaySec,minMc:o.autoMinMcUsd},U=e=>{const a=q(e);return Date.now()<e.boughtAt+a.delay*1e3||a.minMc!==null&&!(e.mcUsd>=a.minMc)},j=e=>`$${Math.round(e).toLocaleString("en-US")}`;function Z(e){const a=q(e),t=e.ticker?`$${e.ticker}`:"your coin",n=e.boughtAt+a.delay*1e3-Date.now(),s=[];return n>0&&s.push(`in ${n>=9e4?Math.round(n/6e4)+" min":Math.ceil(n/1e3)+" s"}`),a.minMc!==null&&!(e.mcUsd>=a.minMc)&&s.push(`once its market cap reaches ${j(a.minMc)} (${e.mcUsd>0?"now "+j(e.mcUsd):"reading it\u2026"}${e.offCurve?", it left the bonding curve, so that number may be behind":""})`),`${t}: callout ${s.join(" and ")}`}const w=(e,a,t,n)=>`<div class="fld check"><input type="checkbox" id="ca-${a}" data-${e}="${a}" ${(e==="c"?r:r.filters)[a]?"checked":""}/><div><label for="ca-${a}">${i(t)}</label>${n?`<div class="help">${i(n)}</div>`:""}</div></div>`;function ee(){const e=r.filters,a=d.RANGES.map(t=>`<div class="ca-range"><label title="${i(t.help||"")}">${i(t.label)}</label>
+        <input type="number" min="0" step="any" placeholder="min" data-min="${t.key}" value="${i($(e[t.key].min))}" aria-label="${i(t.label)} minimum"/>
+        <input type="number" min="0" step="any" placeholder="max" data-max="${t.key}" value="${i($(e[t.key].max))}" aria-label="${i(t.label)} maximum"/></div>`).join("");return`
+      <div id="caStatus">${L()}</div>
       <p class="help" style="margin-top:0">Two switches that work on their own or together. Both follow the TEST / LIVE switch at the top: in TEST nothing is bought or posted, the activity list shows what would have happened. Hatchr never sells here: selling stays your decision.</p>
-      ${check("c", "ownBuys", "Call out a coin right after I buy it myself", "When your Hatchr wallet, or the wallet you entered on the Callouts tab, buys a pump.fun coin anywhere (pump.fun, Axiom…), its callout goes out straight away. Coins you already hold when you switch this on are left alone. Not limited by the minutes and per-day numbers below.")}
-      <div class="fld" id="caOwnFld" ${draft.ownBuys ? "" : "hidden"}><label for="ca-ownTemplate">Text for your own buys</label><textarea id="ca-ownTemplate" data-c="ownTemplate" rows="2" maxlength="2000">${esc(draft.ownTemplate)}</textarea></div>
-      <div class="grid2">${numField("ownDelaySec", "Your buys: wait before the callout (seconds)", "0 = straight away.")}${numField("ownMinMcUsd", "Your buys: only once market cap reaches ($)", "Empty = no condition.", "any", "no condition")}</div>
-      ${check("c", "keepTab", "Keep a pump.fun tab open in the background", "A callout has to leave from a pump.fun tab. With none open, Chrome first opens and loads one for every callout, which costs a few seconds. On: Hatchr keeps one small pinned tab ready (LIVE only). You can also just keep pump.fun open yourself.")}
-      ${check("c", "enabled", "Buy and call out automatically", "When a new pump.fun coin passes the filters below, Hatchr buys the smallest position pump.fun accepts for a callout, checks that your wallet really holds it, and posts the callout.")}
-      <div class="grid2">${numField("autoDelaySec", "Automatic buys: wait before the callout (seconds)", "0 = straight away.")}${numField("autoMinMcUsd", "Automatic buys: only once market cap reaches ($)", "Empty = no condition. While a coin waits, the next coins are still bought.", "any", "no condition")}</div>
-      ${numField("waitMaxMin", "Stop waiting for the market cap after (minutes)", "A coin that has not reached the market cap by then is not called out (it stays in your wallet). Empty = keep waiting for as long as you hold it. If you sell it meanwhile, it is not called.", "any", "never")}
+      <p class="help tr-hint" data-if="!ownBuys,!enabled">Switch on <b>Call out my own buys</b> and/or <b>Auto buy + call out</b> at the top of this page.</p>
+      <section class="tr-sec" data-if="ownBuys"><h4 class="tr-h">Your own buys</h4>
+      <div class="fld"><label for="ca-ownTemplate">Text for your own buys</label><textarea id="ca-ownTemplate" data-c="ownTemplate" rows="2" maxlength="2000">${i(r.ownTemplate)}</textarea></div>
+      <div class="grid2">${h("ownDelaySec","Your buys: wait before the callout (seconds)","0 = straight away.")}${h("ownMinMcUsd","Your buys: only once market cap reaches ($)","Empty = no condition.","any","no condition")}</div>
+      </section>
+      <div data-if="ownBuys|enabled">${w("c","keepTab","Keep a pump.fun tab open in the background","A callout has to leave from a pump.fun tab. With none open, Chrome first opens and loads one for every callout, which costs a few seconds. On: Hatchr keeps one small pinned tab ready (LIVE only). You can also just keep pump.fun open yourself.")}</div>
+      <section class="tr-sec" data-if="enabled"><h4 class="tr-h">Automatic buys</h4>
+      <p class="help tr-hint">When a new pump.fun coin passes the filters below, Hatchr buys the smallest position pump.fun accepts for a callout, checks that your wallet really holds it, and posts the callout.</p>
+      <div class="grid2">${h("autoDelaySec","Automatic buys: wait before the callout (seconds)","0 = straight away.")}${h("autoMinMcUsd","Automatic buys: only once market cap reaches ($)","Empty = no condition. While a coin waits, the next coins are still bought.","any","no condition")}</div>
+      ${h("waitMaxMin","Stop waiting for the market cap after (minutes)","A coin that has not reached the market cap by then is not called out (it stays in your wallet). Empty = keep waiting for as long as you hold it. If you sell it meanwhile, it is not called.","any","never")}
       <div class="warnbox">Every buy costs real SOL plus trading and network fees, and most new coins go to zero. pump.fun pays callout rewards on how your followers do after a call, and pays less the more often you call, so strict filters and few callouts work better than many.</div>
-      <div class="grid2">${numField("buyUsd", "Buy size ($)", "Any amount. pump.fun only takes a callout for a coin you hold $1 of, so under about 1.2 the callout is usually refused after fees.")}${numField("slippage", "Slippage (%)", "")}</div>
-      <div class="grid2">${numField("priorityFee", "Priority fee (SOL)", "Paid in full on every buy.")}${numField("reserveSol", "Always keep in wallet (SOL)", "Buying stops when the balance would go under this. 0 = spend down to nothing.")}</div>
-      <div class="grid2">${numField("minIntervalMin", "Minutes between callouts", "The automatic buys wait this long after a callout. 0 = no waiting: the next coin that passes is bought straight away.")}${numField("maxPerDay", "Callouts per day", "0 = no daily limit.")}</div>
+      <div class="grid2">${h("buyUsd","Buy size ($)","Any amount. pump.fun only takes a callout for a coin you hold $1 of, so under about 1.2 the callout is usually refused after fees.")}${h("slippage","Slippage (%)","")}</div>
+      ${w("c","boost","\u26A1 Boost: the priority fee follows the network","Pays what the network asks right now for a fast landing, never more than 0.003 SOL, instead of a fixed fee.")}
+      <div class="grid2"><div data-if="!boost">${h("priorityFee","Priority fee (SOL)","Paid in full on every buy.")}</div>${h("reserveSol","Always keep in wallet (SOL)","Buying stops when the balance would go under this. 0 = spend down to nothing.")}</div>
+      <div class="grid2">${h("minIntervalMin","Minutes between callouts","The automatic buys wait this long after a callout. 0 = no waiting: the next coin that passes is bought straight away.")}${h("maxPerDay","Callouts per day","0 = no daily limit.")}</div>
+      </section>
+      <section class="tr-sec" data-if="ownBuys|enabled"><h4 class="tr-h">Callout text</h4>
       <div class="fld"><label for="ca-textMode">Text the two switches send</label>
-        <select id="ca-textMode" data-c="textMode"><option value="template" ${draft.textMode === "template" ? "selected" : ""}>The one text set for each switch</option><option value="list" ${draft.textMode === "list" ? "selected" : ""}>A random one of my callout texts (below)</option><option value="auto" ${draft.textMode === "auto" ? "selected" : ""}>Hatchr's AI texts (when the AI is set up)</option></select></div>
-      <div class="fld" id="caTplFld" ${draft.textMode === "template" ? "" : "hidden"}><label for="ca-template">Text for automatic buys</label><textarea id="ca-template" data-c="template" rows="2" maxlength="2000">${esc(draft.template)}</textarea>
+        <select id="ca-textMode" data-c="textMode"><option value="template" ${r.textMode==="template"?"selected":""}>The one text set for each switch</option><option value="list" ${r.textMode==="list"?"selected":""}>A random one of my callout texts (below)</option><option value="auto" ${r.textMode==="auto"?"selected":""}>Hatchr's AI texts (when the AI is set up)</option></select></div>
+      <div class="fld" data-if="textMode=template"><label for="ca-template">Text for automatic buys</label><textarea id="ca-template" data-c="template" rows="2" maxlength="2000">${i(r.template)}</textarea>
         <div class="help">{ticker} becomes $TICKER, {name} the coin's name. Your followers read this, so keep it true.</div></div>
 
-      <h4 class="ca-h">My callout texts</h4>
-      <div class="fld"><textarea id="ca-texts" data-c="texts" rows="6" spellcheck="false" placeholder="One text per line">${esc(draft.texts.join("\n"))}</textarea>
+      </section>
+      <section class="tr-sec"><h4 class="tr-h">My callout texts</h4>
+      <div class="fld"><textarea id="ca-texts" data-c="texts" rows="6" spellcheck="false" placeholder="One text per line">${i(r.texts.join(`
+`))}</textarea>
         <div class="help">One text per line, as many as you like. {ticker} becomes $TICKER, {name} the coin's name. These are the ready texts in the callout window on the Callouts tab (three at a time, "New texts" shuffles), in place of Hatchr's built-in ones. Empty the box to get the built-in ones back.</div></div>
-      ${check("c", "textsOnly", "Always offer my texts in the callout window", "Off: the AI's texts are shown when the AI is set up and answers, yours otherwise. On: always yours, and the window opens without waiting for the AI.")}
+      ${w("c","textsOnly","Always offer my texts in the callout window","Off: the AI's texts are shown when the AI is set up and answers, yours otherwise. On: always yours, and the window opens without waiting for the AI.")}
 
-      <h4 class="ca-h">Filters</h4>
+      </section>
+      <section class="tr-sec" data-if="enabled"><h4 class="tr-h">Filters</h4>
       <p class="help" style="margin-top:0">These are Hatchr's own filters, separate from the ones in Axiom. A coin has to pass every one that is filled in; anything Hatchr cannot measure counts as not passed. Leave a box empty for no limit.</p>
       <div class="ca-import">
         <select id="caTab" aria-label="Axiom column"><option value="newPairs">New Pairs</option><option value="finalStretch">Final Stretch</option><option value="migrated">Migrated</option></select>
@@ -151,247 +45,26 @@
       </div>
       <div id="caPasteBox" hidden><textarea id="caPaste" rows="4" placeholder="Paste the text Axiom gave you when you exported your Pulse filters"></textarea>
         <div class="onboard-row"><button data-ca="importPasteGo">Import this</button><button class="ghost" data-ca="importPasteCancel">Cancel</button></div></div>
-      <div id="caImportOut">${importNote}</div>
-      <div class="ca-ranges"><div class="ca-range ca-range-head"><span></span><span>Min</span><span>Max</span></div>${ranges}</div>
-      <div class="fld"><label for="ca-include">Keywords (any of these, in name, ticker or description)</label><input id="ca-include" data-words="includeKeywords" value="${esc(f.includeKeywords.join(", "))}" placeholder="comma separated, empty = any coin"/></div>
-      <div class="fld"><label for="ca-exclude">Blocked words</label><input id="ca-exclude" data-words="excludeKeywords" value="${esc(f.excludeKeywords.join(", "))}" placeholder="comma separated"/></div>
-      <div class="grid2">${check("f", "anySocial", "Has at least one link")}${check("f", "twitter", "Has X / Twitter")}</div>
-      <div class="grid2">${check("f", "website", "Has a website")}${check("f", "telegram", "Has Telegram")}</div>
+      <div id="caImportOut">${y}</div>
+      <div class="ca-ranges"><div class="ca-range ca-range-head"><span></span><span>Min</span><span>Max</span></div>${a}</div>
+      <div class="fld"><label for="ca-include">Keywords (any of these, in name, ticker or description)</label><input id="ca-include" data-words="includeKeywords" value="${i(e.includeKeywords.join(", "))}" placeholder="comma separated, empty = any coin"/></div>
+      <div class="fld"><label for="ca-exclude">Blocked words</label><input id="ca-exclude" data-words="excludeKeywords" value="${i(e.excludeKeywords.join(", "))}" placeholder="comma separated"/></div>
+      <div class="grid2">${w("f","anySocial","Has at least one link")}${w("f","twitter","Has X / Twitter")}</div>
+      <div class="grid2">${w("f","website","Has a website")}${w("f","telegram","Has Telegram")}</div>
 
-      <h4 class="ca-h">Copies and vamps</h4>
-      ${check("f", "cloneGuard", "Skip copies", "Compares every new coin with the ones Hatchr saw before it. Not part of Axiom's filters, so an import leaves this as it is.")}
+      <h4 class="tr-sub">Copies and vamps</h4>
+      ${w("f","cloneGuard","Skip copies","Compares every new coin with the ones Hatchr saw before it. Not part of Axiom's filters, so an import leaves this as it is.")}
       <div class="grid2">
-        <div class="fld"><label for="ca-cloneWindowMin">Look back (minutes)</label><input id="ca-cloneWindowMin" data-fn="cloneWindowMin" type="number" min="0" step="any" value="${esc(val(f.cloneWindowMin))}"/><div class="help">How far back Hatchr remembers earlier coins when it checks for copies. 180 = a coin is a copy if the same name, ticker or picture appeared in the last 3 hours. 0 = remembers nothing, so no coin counts as a copy.</div></div>
-        <div class="fld"><label for="ca-maxSameName">Earlier coins with the same name or ticker allowed</label><input id="ca-maxSameName" data-fn="maxSameName" type="number" min="0" step="any" placeholder="no limit" value="${esc(val(f.maxSameName))}"/><div class="help">0 = only the first coin with a name gets through. Empty = no limit.</div></div>
+        <div class="fld"><label for="ca-cloneWindowMin">Look back (minutes)</label><input id="ca-cloneWindowMin" data-fn="cloneWindowMin" type="number" min="0" step="any" value="${i($(e.cloneWindowMin))}"/><div class="help">How far back Hatchr remembers earlier coins when it checks for copies. 180 = a coin is a copy if the same name, ticker or picture appeared in the last 3 hours. 0 = remembers nothing, so no coin counts as a copy.</div></div>
+        <div class="fld"><label for="ca-maxSameName">Earlier coins with the same name or ticker allowed</label><input id="ca-maxSameName" data-fn="maxSameName" type="number" min="0" step="any" placeholder="no limit" value="${i($(e.maxSameName))}"/><div class="help">0 = only the first coin with a name gets through. Empty = no limit.</div></div>
       </div>
       <div class="grid2">
-        ${check("f", "blockSameImage", "Skip a coin that reuses an earlier coin's picture and details")}
-        <div class="fld"><label for="ca-maxDevCoins">Other coins by the same dev allowed</label><input id="ca-maxDevCoins" data-fn="maxDevCoins" type="number" min="0" step="any" placeholder="no limit" value="${esc(val(f.maxDevCoins))}"/><div class="help">How many other coins the same dev may have launched in the look-back time. Empty = no limit (a dev with 3,000 coins still passes).</div></div>
+        ${w("f","blockSameImage","Skip a coin that reuses an earlier coin's picture and details")}
+        <div class="fld"><label for="ca-maxDevCoins">Other coins by the same dev allowed</label><input id="ca-maxDevCoins" data-fn="maxDevCoins" type="number" min="0" step="any" placeholder="no limit" value="${i($(e.maxDevCoins))}"/><div class="help">How many other coins the same dev may have launched in the look-back time. Empty = no limit (a dev with 3,000 coins still passes).</div></div>
       </div>
 
-      <div class="onboard-row"><button data-ca="save">Save</button><button class="ghost" data-ca="reset">Reset filters</button></div>
-      <div id="caNote" class="help">${formNote}</div>
-      <p class="help">Everything on this page (both switches' settings, filters, your callout texts) and your hidden coins are part of Hatchr's backup: Settings → Account → Export.</p>
-      <details class="ca-details"${activityOpen() ? " open" : ""}><summary>Activity</summary><div id="caLog">${logHtml(40)}</div><button class="link" data-ca="clearLog">Clear</button></details>`;
-  }
-
-  function readForm(box) {
-    const next = JSON.parse(JSON.stringify(draft));
-    box.querySelectorAll("[data-c]").forEach(el => { next[el.dataset.c] = el.type === "checkbox" ? el.checked : el.value; });
-    box.querySelectorAll("[data-f]").forEach(el => { next.filters[el.dataset.f] = el.checked; });
-    box.querySelectorAll("[data-fn]").forEach(el => { next.filters[el.dataset.fn] = el.value; });
-    box.querySelectorAll("[data-min]").forEach(el => { next.filters[el.dataset.min] = { ...next.filters[el.dataset.min], min: el.value }; });
-    box.querySelectorAll("[data-max]").forEach(el => { next.filters[el.dataset.max] = { ...next.filters[el.dataset.max], max: el.value }; });
-    box.querySelectorAll("[data-words]").forEach(el => { next.filters[el.dataset.words] = el.value; });
-    return F.cleanConfig(next);
-  }
-
-  function renderForm() {
-    const box = $("#coAutoBox");
-    if (!box) return;
-    box.innerHTML = formHtml();
-    box.dataset.ready = "1";
-  }
-  function refreshStatus() {
-    renderCard();
-    const st = $("#caStatus"), lg = $("#caLog");
-    if (st) st.innerHTML = statusHtml();
-    if (lg) lg.innerHTML = logHtml(40);
-  }
-
-  // ---------- importing Axiom filters ----------
-  function runImport(text) {
-    const box = $("#coAutoBox");
-    if (box) draft = readForm(box);
-    let result;
-    try { result = F.importAxiom(text, $("#caTab")?.value || "newPairs"); }
-    catch (e) { importNote = `<div class="warnbox">${esc(e.message || e)}</div>`; return renderForm(); }
-    const names = { newPairs: "New Pairs", finalStretch: "Final Stretch", migrated: "Migrated" };
-    if (!result.applied.length && !result.unsupported.length && !result.unknown.length) {
-      importNote = '<div class="warnbox">No filters were set in that file, so nothing was changed.</div>';
-      return renderForm();
-    }
-    draft = F.cleanConfig({ ...draft, filters: { ...draft.filters, ...result.patch } });
-    dirty = true;
-    const list = items => `<ul>${items.map(i => `<li>${i}</li>`).join("")}</ul>`;
-    importNote = `<div class="ca-imported"><b>Imported${result.tab ? ` from ${esc(names[result.tab] || result.tab)}` : ""}. Check the values, then press Save.</b>` +
-      (result.applied.length ? list(result.applied.map(a => `${esc(a.label)}: ${esc(a.value)}`)) : '<p class="help">None of the filters in the file are ones Hatchr can measure.</p>') +
-      (result.unsupported.length ? `<p class="help"><b>Not applied</b>, because only Axiom has this data (Hatchr cannot check it, so these coins are NOT filtered on it):</p>${list(result.unsupported.map(u => `${esc(u.key)} = ${esc(u.value)}`))}` : "") +
-      (result.unknown.length ? `<p class="help"><b>Not recognised</b> (left out):</p>${list(result.unknown.map(u => `${esc(u.key)} = ${esc(u.value)}`))}` : "") + "</div>";
-    renderForm();
-  }
-
-  // ---------- hiding coins on the Callouts tab ----------
-  // The eye on a coin hides it from the list (it stays in your wallet and nothing else changes). Hidden coins are counted
-  // in a line under the list; "Show" brings them back greyed out, where the crossed eye un-hides one, or "Unhide all".
-  const EYE = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
-  const EYE_OFF = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.9 10.9 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.1M6.5 6.6A17.3 17.3 0 0 0 2 12s3.6 7 10 7a10.6 10.6 0 0 0 4.3-.9"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
-  let hiddenSet = new Set(), showHidden = false, heldWatch = null;
-  function applyHidden() {
-    const box = $("#held");
-    if (!box) return;
-    if (heldWatch) heldWatch.disconnect();
-    box.querySelectorAll(".ca-hidden-bar").forEach(el => el.remove());
-    let count = 0;
-    box.querySelectorAll(".dep").forEach(row => {
-      const btn = row.querySelector("[data-hide]");
-      if (!btn) return;
-      const hid = hiddenSet.has(btn.dataset.hide);
-      if (hid) count++;
-      row.classList.toggle("ca-hid", hid);
-      row.hidden = hid && !showHidden;
-      const want = hid ? "off" : "on";
-      if (btn.dataset.eye !== want) { btn.dataset.eye = want; btn.innerHTML = hid ? EYE_OFF : EYE; btn.title = hid ? "Show this coin in the list again" : "Hide this coin"; btn.setAttribute("aria-label", btn.title); }
-    });
-    if (count) {
-      const bar = document.createElement("div");
-      bar.className = "ca-hidden-bar";
-      bar.innerHTML = `<span class="muted">${count} hidden coin${count === 1 ? "" : "s"}</span> <button class="link" data-ca="hiddenToggle">${showHidden ? "Hide again" : "Show"}</button>${showHidden ? ' <button class="link" data-ca="unhideAll">Unhide all</button>' : ""}`;
-      box.appendChild(bar);
-    } else showHidden = false;
-    if (heldWatch) heldWatch.observe(box, { childList: true });
-  }
-  async function setHidden(mints, hide) {
-    for (const mint of mints) { if (hide) hiddenSet.add(mint); else hiddenSet.delete(mint); }
-    applyHidden();
-    try { await chrome.storage.local.set({ coHidden: [...hiddenSet].slice(-5000) }); } catch { /* stays hidden for this session at least */ }
-  }
-  (async () => {
-    try { const { coHidden } = await chrome.storage.local.get("coHidden"); if (Array.isArray(coHidden)) hiddenSet = new Set(coHidden); } catch { /* nothing hidden */ }
-    const box = $("#held");
-    if (box) { heldWatch = new MutationObserver(applyHidden); heldWatch.observe(box, { childList: true }); }
-    applyHidden();
-  })();
-
-  // What a backup file holds of all this (shown next to "Exported" under Settings → Account).
-  let savingAt = 0;
-  globalThis.HatchrBackupNote = () => ` Also in the file: your callout settings and filters, ${saved.texts.length} callout text${saved.texts.length === 1 ? "" : "s"}${hiddenSet.size ? `, ${hiddenSet.size} hidden coin${hiddenSet.size === 1 ? "" : "s"}` : ""}.`;
-
-  // ---------- actions ----------
-  async function load() {
-    try {
-      const data = await send({ type: "coAutoGet" });
-      saved = F.cleanConfig(data.config); state = data.state; live = !!data.live;
-      wallets = Array.isArray(data.wallets) ? data.wallets : []; walletFeed = !!data.walletFeed;
-      if (!loaded || !dirty) draft = F.cleanConfig(saved);
-      loaded = true;
-    } catch { /* background not up yet: the next poll gets it */ }
-    try {
-      const { settings } = await chrome.storage.local.get("settings");
-      dryRun = !settings || settings.dryRun !== false;
-      mainOn = !settings || settings.watching !== false;
-    } catch { /* keep what we had */ }
-  }
-
-  async function save(box) {
-    const next = readForm(box);
-    savingAt = Date.now();
-    // Chrome only shows its permission question straight from a click, so this comes before anything else.
-    if ((next.enabled || next.ownBuys) && chrome.permissions && chrome.runtime.id !== "hatchr-desktop") {
-      let allowed = false;
-      try { allowed = await chrome.permissions.request({ origins: PUMP_ORIGINS }); } catch { allowed = false; }
-      if (!allowed) { formNote = '<span class="ca-bad">Chrome did not allow pump.fun, and a callout cannot be sent without it. Nothing was switched on.</span>'; next.enabled = false; next.ownBuys = false; }
-      else formNote = "";
-    } else formNote = "";
-    try {
-      savingAt = Date.now();
-      const data = await send({ type: "coAutoSave", config: next });
-      saved = F.cleanConfig(data.config); state = data.state; live = !!data.live;
-      draft = F.cleanConfig(saved); dirty = false; importNote = "";
-      if (!formNote) formNote = saved.enabled || saved.ownBuys ? (dryRun ? "Saved. Running in TEST: nothing is bought or posted." : "Saved. Running LIVE.") : "Saved. Automatic callouts are off.";
-      // Nothing is capped any more, so a slip of the finger is pointed out instead.
-      const heads = [];
-      if (saved.priorityFee >= 0.01) heads.push(`The priority fee is ${saved.priorityFee} SOL on every single buy.`);
-      if (saved.buyUsd < 1.2) heads.push("With a buy under about $1.20, pump.fun usually refuses the callout: it needs $1 held after fees.");
-      if (saved.enabled && saved.minIntervalMin === 0 && saved.maxPerDay === 0) heads.push("No waiting and no daily limit: every coin that passes your filters is bought, for as long as the wallet has SOL above your reserve.");
-      if (heads.length) formNote += ` <span class="ca-warn">${heads.map(esc).join(" ")}</span>`;
-    } catch (e) { formNote = `<span class="ca-bad">${esc(e.message || e)}</span>`; }
-    renderForm(); renderCard();
-  }
-
-  document.addEventListener("click", async e => {
-    const eye = e.target.closest("[data-hide]");
-    if (eye) { e.preventDefault(); e.stopPropagation(); return setHidden([eye.dataset.hide], !hiddenSet.has(eye.dataset.hide)); }
-    const btn = e.target.closest("[data-ca]");
-    if (!btn) return;
-    if (btn.dataset.ca === "hiddenToggle") { showHidden = !showHidden; return applyHidden(); }
-    if (btn.dataset.ca === "unhideAll") { showHidden = false; return setHidden([...document.querySelectorAll("#held .dep.ca-hid [data-hide]")].map(b => b.dataset.hide), false); }
-    const box = $("#coAutoBox"), act = btn.dataset.ca;
-    if (act === "open") {
-      $('.tabs button[data-tab="settings"]')?.click();
-      $('#subtabs button[data-sub="callauto"]')?.click();
-    } else if (act === "skipWait") {
-      try { const data = await send({ type: "coAutoSkipWait" }); state = data.state; live = !!data.live; } catch { /* next poll */ }
-      refreshStatus();
-    } else if (act === "resume") {
-      try { const data = await send({ type: "coAutoResume" }); state = data.state; live = !!data.live; } catch { /* next poll */ }
-      refreshStatus();
-    } else if (act === "clearLog") {
-      try { const data = await send({ type: "coAutoClearLog" }); state = data.state; } catch { /* next poll */ }
-      refreshStatus();
-    } else if (act === "save" && box) {
-      btn.disabled = true;
-      await save(box);
-    } else if (act === "reset" && box) {
-      draft = F.cleanConfig({ ...readForm(box), filters: F.DEFAULT_FILTERS });
-      dirty = true; importNote = ""; formNote = "Filters are back to Hatchr's defaults. Press Save to keep them.";
-      renderForm();
-    } else if (act === "importFile") {
-      $("#caFile")?.click();
-    } else if (act === "importPaste") {
-      const p = $("#caPasteBox"); if (p) { p.hidden = !p.hidden; if (!p.hidden) $("#caPaste")?.focus(); }
-    } else if (act === "importPasteCancel") {
-      const p = $("#caPasteBox"); if (p) p.hidden = true;
-    } else if (act === "importPasteGo") {
-      runImport($("#caPaste")?.value || "");
-    }
-  });
-  document.addEventListener("change", e => {
-    if (e.target.id === "caFile") {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
-      if (file.size > 2e6) { importNote = '<div class="warnbox">That file is too large to be a filter export.</div>'; return renderForm(); }
-      file.text().then(runImport, () => { importNote = '<div class="warnbox">The file could not be read.</div>'; renderForm(); });
-      return;
-    }
-    const box = e.target.closest("#coAutoBox");
-    if (!box || e.target.id === "caTab") return;
-    dirty = true; draft = readForm(box);
-    if (e.target.id === "ca-textMode") { const fld = $("#caTplFld"); if (fld) fld.hidden = e.target.value !== "template"; }
-    if (e.target.id === "ca-ownBuys") { const fld = $("#caOwnFld"); if (fld) fld.hidden = !e.target.checked; }
-  });
-  // Keep what is typed, so it survives the form being rebuilt.
-  document.addEventListener("input", e => { const box = e.target.closest("#coAutoBox"); if (box && e.target.id !== "caPaste") { dirty = true; draft = readForm(box); } });
-
-  // The settings form is rebuilt by sidepanel.js now and then; put ours back, with unsaved changes kept.
-  const mount = () => { const box = $("#coAutoBox"); if (box && !box.dataset.ready && loaded) renderForm(); };
-  const host = $("#settingsForm");
-  if (host) new MutationObserver(mount).observe(host, { childList: true });
-
-  try {
-    chrome.storage.onChanged.addListener((changes, area) => {
-      if (area !== "local") return;
-      if (changes.coAutoState) { state = changes.coAutoState.newValue || state; refreshStatus(); }
-      if (changes.coHidden) { hiddenSet = new Set(Array.isArray(changes.coHidden.newValue) ? changes.coHidden.newValue : []); applyHidden(); }
-      // The callout settings changed from outside this form: a backup was imported. Show what was loaded, straight away.
-      // (Before, the form kept showing the old values, and pressing Save there wrote them back over the import.)
-      if (changes.coAuto && Date.now() - savingAt > 2000) {
-        saved = F.cleanConfig(changes.coAuto.newValue); draft = F.cleanConfig(saved); dirty = false; importNote = "";
-        formNote = changes.coAutoWhy && changes.coAutoWhy.newValue && changes.coAutoWhy.newValue.why === "no-wait"
-          ? "Minutes between callouts was moved from the old default of 180 to 0 (no waiting)."
-          : "Callout settings, filters and texts were loaded from your backup. Both switches arrive off: switch on what you want and press Save.";
-        renderForm(); renderCard();
-      }
-      if (changes.settings) { const s = changes.settings.newValue; dryRun = !s || s.dryRun !== false; mainOn = !s || s.watching !== false; refreshStatus(); }
-    });
-  } catch { /* no storage events: the poll below keeps it fresh */ }
-
-  async function poll() {
-    if (document.visibilityState === "hidden") return;
-    await load();
-    mount();
-    refreshStatus();
-  }
-  poll();
-  setInterval(poll, 5000);
-})();
+      </section>
+      <div class="onboard-row"><button data-ca="save">Save</button><button class="ghost" data-ca="reset" data-if="enabled">Reset filters</button></div>
+      <div id="caNote" class="help">${f}</div>
+      <p class="help">Everything on this page (both switches' settings, filters, your callout texts) and your hidden coins are part of Hatchr's backup: Settings \u2192 Account \u2192 Export.</p>
+      <details class="ca-details"${D()?" open":""}><summary>Activity</summary><div id="caLog">${P(40)}</div><button class="link" data-ca="clearLog">Clear</button></details>`}function M(e){const a=JSON.parse(JSON.stringify(r));return e.querySelectorAll("[data-c]").forEach(t=>{a[t.dataset.c]=t.type==="checkbox"?t.checked:t.value}),e.querySelectorAll("[data-f]").forEach(t=>{a.filters[t.dataset.f]=t.checked}),e.querySelectorAll("[data-fn]").forEach(t=>{a.filters[t.dataset.fn]=t.value}),e.querySelectorAll("[data-min]").forEach(t=>{a.filters[t.dataset.min]={...a.filters[t.dataset.min],min:t.value}}),e.querySelectorAll("[data-max]").forEach(t=>{a.filters[t.dataset.max]={...a.filters[t.dataset.max],max:t.value}}),e.querySelectorAll("[data-words]").forEach(t=>{a.filters[t.dataset.words]=t.value}),d.cleanConfig(a)}function p(){const e=c("#coAutoBox");e&&(e.innerHTML=ee(),e.dataset.ready="1",R(e))}function R(e=c("#coAutoBox")){if(!e||!globalThis.HatchrWhen)return;const a={enabled:!!r.enabled,ownBuys:!!r.ownBuys,textMode:(e.querySelector("#ca-textMode")||{}).value||r.textMode,boost:(e.querySelector("#ca-boost")||{}).checked};e.querySelectorAll("[data-if]").forEach(t=>{t.hidden=!globalThis.HatchrWhen(t.dataset.if,a)})}function x(){H();const e=c("#caStatus"),a=c("#caLog");e&&(e.innerHTML=L()),a&&(a.innerHTML=P(40))}function V(e){const a=c("#coAutoBox");a&&(r=M(a));let t;try{t=d.importAxiom(e,c("#caTab")?.value||"newPairs")}catch(l){return y=`<div class="warnbox">${i(l.message||l)}</div>`,p()}const n={newPairs:"New Pairs",finalStretch:"Final Stretch",migrated:"Migrated"};if(!t.applied.length&&!t.unsupported.length&&!t.unknown.length)return y='<div class="warnbox">No filters were set in that file, so nothing was changed.</div>',p();r=d.cleanConfig({...r,filters:{...r.filters,...t.patch}}),g=!0;const s=l=>`<ul>${l.map(ie=>`<li>${ie}</li>`).join("")}</ul>`;y=`<div class="ca-imported"><b>Imported${t.tab?` from ${i(n[t.tab]||t.tab)}`:""}. Check the values, then press Save.</b>`+(t.applied.length?s(t.applied.map(l=>`${i(l.label)}: ${i(l.value)}`)):'<p class="help">None of the filters in the file are ones Hatchr can measure.</p>')+(t.unsupported.length?`<p class="help"><b>Not applied</b>, because only Axiom has this data (Hatchr cannot check it, so these coins are NOT filtered on it):</p>${s(t.unsupported.map(l=>`${i(l.key)} = ${i(l.value)}`))}`:"")+(t.unknown.length?`<p class="help"><b>Not recognised</b> (left out):</p>${s(t.unknown.map(l=>`${i(l.key)} = ${i(l.value)}`))}`:"")+"</div>",p()}const te='<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',ae='<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.9 10.9 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.1M6.5 6.6A17.3 17.3 0 0 0 2 12s3.6 7 10 7a10.6 10.6 0 0 0 4.3-.9"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';let m=new Set,v=!1,k=null;function T(){const e=c("#held");if(!e)return;k&&k.disconnect(),e.querySelectorAll(".ca-hidden-bar").forEach(t=>t.remove());let a=0;if(e.querySelectorAll(".dep").forEach(t=>{const n=t.querySelector("[data-hide]");if(!n)return;const s=m.has(n.dataset.hide);s&&a++,t.classList.toggle("ca-hid",s),t.hidden=s&&!v;const l=s?"off":"on";n.dataset.eye!==l&&(n.dataset.eye=l,n.innerHTML=s?ae:te,n.title=s?"Show this coin in the list again":"Hide this coin",n.setAttribute("aria-label",n.title))}),a){const t=document.createElement("div");t.className="ca-hidden-bar",t.innerHTML=`<span class="muted">${a} hidden coin${a===1?"":"s"}</span> <button class="link" data-ca="hiddenToggle">${v?"Hide again":"Show"}</button>${v?' <button class="link" data-ca="unhideAll">Unhide all</button>':""}`,e.appendChild(t)}else v=!1;k&&k.observe(e,{childList:!0})}async function Y(e,a){for(const t of e)a?m.add(t):m.delete(t);T();try{await chrome.storage.local.set({coHidden:[...m].slice(-5e3)})}catch{}}(async()=>{try{const{coHidden:a}=await chrome.storage.local.get("coHidden");Array.isArray(a)&&(m=new Set(a))}catch{}const e=c("#held");e&&(k=new MutationObserver(T),k.observe(e,{childList:!0})),T()})();let B=0;globalThis.HatchrBackupNote=()=>` Also in the file: your callout settings and filters, ${o.texts.length} callout text${o.texts.length===1?"":"s"}${m.size?`, ${m.size} hidden coin${m.size===1?"":"s"}`:""}.`;async function ne(){try{const e=await S({type:"coAutoGet"});o=d.cleanConfig(e.config),u=e.state,b=!!e.live,C=Array.isArray(e.wallets)?e.wallets:[],O=!!e.walletFeed,(!A||!g)&&(r=d.cleanConfig(o)),A=!0}catch{}try{const{settings:e}=await chrome.storage.local.get("settings");E=!e||e.dryRun!==!1}catch{}}async function oe(e){const a=M(e);if(B=Date.now(),(a.enabled||a.ownBuys)&&chrome.permissions&&chrome.runtime.id!=="hatchr-desktop"){let t=!1;try{t=await chrome.permissions.request({origins:G})}catch{t=!1}t?f="":(f='<span class="ca-bad">Chrome did not allow pump.fun, and a callout cannot be sent without it. Nothing was switched on.</span>',a.enabled=!1,a.ownBuys=!1)}else f="";try{B=Date.now();const t=await S({type:"coAutoSave",config:a});o=d.cleanConfig(t.config),u=t.state,b=!!t.live,r=d.cleanConfig(o),g=!1,y="",f||(f=o.enabled||o.ownBuys?E?"Saved. Running in TEST: nothing is bought or posted.":"Saved. Running LIVE.":"Saved. Automatic callouts are off.");const n=[];o.priorityFee>=.01&&n.push(`The priority fee is ${o.priorityFee} SOL on every single buy.`),o.buyUsd<1.2&&n.push("With a buy under about $1.20, pump.fun usually refuses the callout: it needs $1 held after fees."),o.enabled&&o.minIntervalMin===0&&o.maxPerDay===0&&n.push("No waiting and no daily limit: every coin that passes your filters is bought, for as long as the wallet has SOL above your reserve."),n.length&&(f+=` <span class="ca-warn">${n.map(i).join(" ")}</span>`)}catch(t){f=`<span class="ca-bad">${i(t.message||t)}</span>`}p(),H()}document.addEventListener("click",async e=>{const a=e.target.closest("[data-hide]");if(a)return e.preventDefault(),e.stopPropagation(),Y([a.dataset.hide],!m.has(a.dataset.hide));const t=e.target.closest("[data-ca]");if(!t)return;if(t.dataset.ca==="hiddenToggle")return v=!v,T();if(t.dataset.ca==="unhideAll")return v=!1,Y([...document.querySelectorAll("#held .dep.ca-hid [data-hide]")].map(l=>l.dataset.hide),!1);const n=c("#coAutoBox"),s=t.dataset.ca;if(s==="open")c('.tabs button[data-tab="settings"]')?.click(),c('#subtabs button[data-sub="callauto"]')?.click();else if(s==="skipWait"){try{const l=await S({type:"coAutoSkipWait"});u=l.state,b=!!l.live}catch{}x()}else if(s==="resume"){try{const l=await S({type:"coAutoResume"});u=l.state,b=!!l.live}catch{}x()}else if(s==="clearLog"){try{u=(await S({type:"coAutoClearLog"})).state}catch{}x()}else if(s==="save"&&n)t.disabled=!0,await oe(n);else if(s==="reset"&&n)r=d.cleanConfig({...M(n),filters:d.DEFAULT_FILTERS}),g=!0,y="",f="Filters are back to Hatchr's defaults. Press Save to keep them.",p();else if(s==="importFile")c("#caFile")?.click();else if(s==="importPaste"){const l=c("#caPasteBox");l&&(l.hidden=!l.hidden,l.hidden||c("#caPaste")?.focus())}else if(s==="importPasteCancel"){const l=c("#caPasteBox");l&&(l.hidden=!0)}else s==="importPasteGo"&&V(c("#caPaste")?.value||"")}),document.addEventListener("change",e=>{if(e.target.id==="caFile"){const t=e.target.files&&e.target.files[0];if(!t)return;if(t.size>2e6)return y='<div class="warnbox">That file is too large to be a filter export.</div>',p();t.text().then(V,()=>{y='<div class="warnbox">The file could not be read.</div>',p()});return}const a=e.target.closest("#coAutoBox");!a||e.target.id==="caTab"||(g=!0,r=M(a),R(a))}),document.addEventListener("input",e=>{const a=e.target.closest("#coAutoBox");a&&e.target.id!=="caPaste"&&(g=!0,r=M(a))});const K=()=>{const e=c("#coAutoBox");e&&!e.dataset.ready&&A&&p()},z=c("#settingsForm");z&&new MutationObserver(K).observe(z,{childList:!0});try{chrome.storage.onChanged.addListener((e,a)=>{if(a!=="local")return;e.coAutoState&&(u=e.coAutoState.newValue||u,x()),e.coHidden&&(m=new Set(Array.isArray(e.coHidden.newValue)?e.coHidden.newValue:[]),T());const t=(n,s)=>JSON.stringify({...n,enabled:0,ownBuys:0})===JSON.stringify({...s,enabled:0,ownBuys:0});if(e.coAuto&&Date.now()-B>2e3&&o&&t(d.cleanConfig(e.coAuto.newValue),o)){const n=d.cleanConfig(e.coAuto.newValue);o=n,r={...r,enabled:n.enabled,ownBuys:n.ownBuys},p(),H()}else e.coAuto&&Date.now()-B>2e3&&(o=d.cleanConfig(e.coAuto.newValue),r=d.cleanConfig(o),g=!1,y="",f=e.coAutoWhy&&e.coAutoWhy.newValue&&e.coAutoWhy.newValue.why==="no-wait"?"Minutes between callouts was moved from the old default of 180 to 0 (no waiting).":"Callout settings, filters and texts were loaded from your backup. Both switches arrive off: switch on what you want and press Save.",p(),H());if(e.settings){const n=e.settings.newValue;E=!n||n.dryRun!==!1,x()}})}catch{}const se=()=>{const e=c("#coAutoBox"),a=c("#coAutoCard");return e&&e.offsetParent!==null||a&&a.offsetParent!==null};async function N(e){document.visibilityState==="hidden"||!e&&A&&!se()||(await ne(),K(),x())}N(!0),setInterval(N,5e3),document.addEventListener("click",e=>{e.target.closest&&e.target.closest(".tabs button, #subtabs button")&&setTimeout(()=>N(),0)})})();

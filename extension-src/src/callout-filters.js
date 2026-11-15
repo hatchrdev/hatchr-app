@@ -140,6 +140,7 @@
       buyUsd: amount(c.buyUsd, DEFAULT_CONFIG.buyUsd) || DEFAULT_CONFIG.buyUsd, // a buy of 0 is no buy
       slippage: amount(c.slippage, DEFAULT_CONFIG.slippage),
       priorityFee: amount(c.priorityFee, DEFAULT_CONFIG.priorityFee),
+      boost: c.boost === true, // ⚡ the network's fee of the moment (capped) instead of priorityFee
       minIntervalMin: amount(c.minIntervalMin, DEFAULT_CONFIG.minIntervalMin), // 0 = no waiting between callouts
       maxPerDay: whole(c.maxPerDay, DEFAULT_CONFIG.maxPerDay),                // 0 = no daily limit
       reserveSol: amount(c.reserveSol, DEFAULT_CONFIG.reserveSol),

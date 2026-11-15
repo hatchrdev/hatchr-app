@@ -250,6 +250,7 @@ export const DEFAULTS = {
   devBuySol: 0.0001,
   slippage: 15,
   priorityFee: 0.00005,
+  boostFee: false, // ⚡ Boost: a live launch pays the priority fee the network asks right now (capped), not priorityFee
   skipPreflight: false,
   confirmManual: false,
   openAxiomAfterLaunch: false, // open the coin right after a live launch (in openIn)

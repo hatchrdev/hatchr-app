@@ -236,10 +236,18 @@ const STALE_MS = 150_000; // background tabs may only report once a minute
 
 // The main switch (Settings → Sources). Off = Hatchr reads no posts and keeps nothing running in the background.
 const watchingOn = (s) => !s || s.watching !== false;
+// CA buy has its own switch and needs posts from Axiom / X even when Hatchr does not launch from posts.
+async function caBuyWants() {
+  try { const { caBuy } = await chrome.storage.local.get("caBuy"); return !!(caBuy && caBuy.enabled && Array.isArray(caBuy.handles) && caBuy.handles.length); } catch { return false; }
+}
+// posts are read (Axiom, X) while either wants them
+async function readingPosts(s) { return watchingOn(s) || (await caBuyWants()); }
+// The callout automode has its own switches too; its pump.fun stream needs the half-minute wake-up.
+const calloutsWant = () => { try { return !!globalThis.HatchrCalloutAuto?.wantsStream(); } catch { return false; } };
 
 function protectTab(tabId) {
   if (tabId == null || tabId < 0) return;
-  getSettingsRaw().then((s) => { if (watchingOn(s)) chrome.tabs.update(tabId, { autoDiscardable: false }).catch(() => {}); }).catch(() => {});
+  getSettingsRaw().then(readingPosts).then((on) => { if (on) chrome.tabs.update(tabId, { autoDiscardable: false }).catch(() => {}); }).catch(() => {});
 }
 
 // Switched off: Chrome may put the Axiom and X tabs to sleep again, like any other tab.
@@ -256,7 +264,7 @@ async function scheduleWatchdog() {
   const s = await getSettingsRaw();
   let job = null;
   try { job = await vanityState(); } catch {}
-  const need = watchingOn(s) || (job && job.status === "running") || (s.autoClaimRewards && !s.dryRun && !s.paused);
+  const need = (await readingPosts(s)) || calloutsWant() || (job && job.status === "running") || (s.autoClaimRewards && !s.dryRun && !s.paused);
   const has = await chrome.alarms.get("axiom-watchdog");
   if (need && !has) chrome.alarms.create("axiom-watchdog", { periodInMinutes: 0.5, delayInMinutes: 0.1 });
   if (!need && has) await chrome.alarms.clear("axiom-watchdog");
@@ -268,6 +276,7 @@ async function onWatchingChange(on) {
   await ensurePumpSocket().catch(() => {});
   await updateBadge();
   if (on) axiomWatchdog().catch(() => {});
+  else if (await caBuyWants()) axiomWatchdog().catch(() => {}); // CA buy still reads posts: the Axiom tab stays
   else {
     await releaseTabs();
     await chrome.storage.local.remove(["axiomStatus", "pumpStatus"]); // so the panel stops saying "live"
@@ -276,7 +285,7 @@ async function onWatchingChange(on) {
 
 async function axiomWatchdog() {
   const s = await getSettings();
-  if (!watchingOn(s) || !s.axiomEnabled || !s.keepAxiomOpen) return;
+  if (!((watchingOn(s) && s.axiomEnabled) || (await caBuyWants())) || !s.keepAxiomOpen) return;
   const now = Date.now();
   const { axiomStatus, axiomKeeper = {} } = await chrome.storage.local.get(["axiomStatus", "axiomKeeper"]);
   let tabs = [];
@@ -302,13 +311,34 @@ async function axiomWatchdog() {
   }
 }
 
-// after install/update, background Axiom tabs need a reload to pick up the new scripts
-chrome.runtime.onInstalled.addListener(async () => {
+// After an install or update, the scripts already on open Axiom and X tabs can no longer reach Hatchr, and those tabs
+// sent nothing until they were reloaded. The tab you were looking at was never reloaded, so its posts stopped.
+// Now the scripts are put back into every open tab. Axiom's page hook (which must be there before Axiom opens its
+// connection) survives an update, so only its bridge is needed; a tab that never had the hook is reloaded instead.
+// force (the panel's Reconnect button): an Axiom tab without the hook is reloaded even when it is the one in front.
+async function reconnectTabs(force = false) {
+  const out = { axiom: 0, x: 0, reloaded: 0, needsReload: 0 };
+  if (!chrome.scripting?.executeScript) return out;
+  let tabs = [];
+  try { tabs = await chrome.tabs.query({ url: ["https://axiom.trade/*"] }); } catch { return out; }
+  for (const t of tabs) {
+    try {
+      const [probe] = await chrome.scripting.executeScript({ target: { tabId: t.id }, world: "MAIN", func: () => !!window.__t2cAxiomMain });
+      if (probe && probe.result) {
+        await chrome.scripting.executeScript({ target: { tabId: t.id }, files: ["content-axiom.js"] });
+        out.axiom++;
+      } else if (force || !t.active) { await chrome.tabs.reload(t.id); out.reloaded++; }
+      else out.needsReload++;
+    } catch { if (t.discarded || force) { chrome.tabs.reload(t.id).catch(() => {}); out.reloaded++; } }
+  }
   try {
-    const tabs = await chrome.tabs.query({ url: ["https://axiom.trade/*"] });
-    for (const t of tabs) if (!t.active) chrome.tabs.reload(t.id).catch(() => {});
+    for (const t of await chrome.tabs.query({ url: ["https://x.com/*", "https://twitter.com/*"] })) {
+      try { await chrome.scripting.executeScript({ target: { tabId: t.id }, files: ["content-x.js"] }); out.x++; } catch { /* a page scripts may not run on */ }
+    }
   } catch {}
-});
+  return out;
+}
+chrome.runtime.onInstalled.addListener(() => { reconnectTabs().catch(() => {}); });
 
 async function scheduleTelegram() {
   const s = await getSettings();
@@ -361,7 +391,17 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (o.tgEnabled !== n.tgEnabled || o.tgChannels !== n.tgChannels || o.tgPollSec !== n.tgPollSec) scheduleTelegram();
   if (o.mode !== n.mode || o.paused !== n.paused || o.dryRun !== n.dryRun) updateBadge();
   if ((o.watching !== false) !== (n.watching !== false)) onWatchingChange(n.watching !== false).catch((e) => console.warn("watching", e));
+  else if (o.axiomEnabled !== n.axiomEnabled || o.keepAxiomOpen !== n.keepAxiomOpen) axiomWatchdog().catch(() => {});
   else if (o.autoClaimRewards !== n.autoClaimRewards || o.paused !== n.paused || o.dryRun !== n.dryRun) scheduleWatchdog().catch(() => {});
+});
+
+// CA buy or the callouts switched on or off: the half-minute wake-up and the Axiom tab follow
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || (!changes.caBuy && !changes.coAuto)) return;
+  setTimeout(() => {
+    scheduleWatchdog().catch(() => {});
+    if (changes.caBuy) { axiomWatchdog().catch(() => {}); ensurePumpSocket().catch(() => {}); }
+  }, 300); // after the modules have read the new settings
 });
 
 // ---------- telegram polling ----------
@@ -371,6 +411,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     ensurePumpSocket().catch(() => {});
     vanityWatchdog().catch(() => {}).then(() => scheduleWatchdog()).catch(() => {});
     autoClaimCheck().catch((e) => console.warn("auto-claim", e));
+    getSettings().then((s) => { if (s.boostFee && globalThis.HatchrRoutes) globalThis.HatchrRoutes.feeEstimate(s.rpcUrl).catch(() => {}); }).catch(() => {});
   }
 });
 
@@ -403,6 +444,8 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
 // ---------- post pipeline ----------
 async function handlePost(post, { force = false } = {}) {
+  // CA buy (ca-buy.js) looks at the post first, before anything here waits on anything: speed is its whole point
+  if (!force) { try { globalThis.HatchrCaBuy?.onPost(post); } catch (e) { console.warn("CA buy", e); } }
   const s = await getSettings();
   const id = post.dedupeKey || `${post.source}:${post.postId}`;
 
@@ -674,7 +717,8 @@ async function ensurePumpSocket() {
   const s = await getSettingsRaw();
   pumpForMeta = wantPump(s);
   // the callout automode (callout-auto.js) listens on this same connection: PumpPortal allows one
-  if (!pumpForMeta && !globalThis.HatchrCalloutAuto?.wantsStream()) {
+  // so does CA buy's launch watch (ca-buy.js), for new coins
+  if (!pumpForMeta && !globalThis.HatchrCalloutAuto?.wantsStream() && !globalThis.HatchrCaBuy?.wantsStream?.()) {
     if (pumpWs) { const ws = pumpWs; pumpWs = null; try { ws.close(); } catch {} }
     return;
   }
@@ -690,6 +734,7 @@ async function ensurePumpSocket() {
   ws.onmessage = (e) => {
     let m;
     try { m = JSON.parse(e.data); } catch { return; }
+    try { globalThis.HatchrCaBuy?.onStream?.(m); } catch (err) { console.warn("launch watch", err); } // first: a buy is waiting on it
     try { globalThis.HatchrCalloutAuto?.onStream(m); } catch (err) { console.warn("callout automode", err); }
     if (pumpForMeta) onPumpMessage(m);
   };
@@ -889,7 +934,11 @@ async function deployCard(cardId, mode, overrides = {}) {
     const thumb = await thumbDataUrl(blob);
     let result;
     try {
-      result = await launch(card, s, secret, {
+      // ⚡ Boost: the fee the network asks now (kept fresh by the half-minute check); never waited for long
+      const fee = s.boostFee && !dryRun && globalThis.HatchrRoutes
+        ? await Promise.race([globalThis.HatchrRoutes.feeEstimate(s.rpcUrl).then((x) => x.fee), new Promise((r) => setTimeout(() => r(null), 400))]).catch(() => null)
+        : null;
+      result = await launch(card, fee ? { ...s, priorityFee: fee } : s, secret, {
         dryRun,
         imageBlob: blob,
         imageKind: kind,
@@ -1269,10 +1318,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return reply((async () => {
         const { settings, walletSecret, deploys = [], onboardSeen, walletArchive = [] } = await chrome.storage.local.get(["settings", "walletSecret", "deploys", "onboardSeen", "walletArchive"]);
         const data = { settings: settings || {}, walletSecret: walletSecret || "", walletArchive, onboardSeen: !!onboardSeen };
-        // the callout automode's settings, filters and texts (Settings → Callouts) and the coins hidden on the Callouts tab
+        // the callout automode's settings, filters and texts (Trade → Auto callouts) and the coins hidden on the Callouts tab
         const { coAuto, coHidden = [] } = await chrome.storage.local.get(["coAuto", "coHidden"]);
         data.calloutAuto = globalThis.HatchrCalloutFilters ? globalThis.HatchrCalloutFilters.cleanConfig(coAuto) : null;
         data.calloutHidden = coHidden;
+        // CA buy and pump alert settings (the Telegram bot token for phone alerts is in the second one)
+        const { caBuy, pumpAlerts, copyTrade } = await chrome.storage.local.get(["caBuy", "pumpAlerts", "copyTrade"]);
+        data.caBuy = globalThis.HatchrCaBuy ? globalThis.HatchrCaBuy.clean(caBuy) : null;
+        data.pumpAlerts = globalThis.HatchrPumpAlerts ? globalThis.HatchrPumpAlerts.clean(pumpAlerts) : null;
+        data.copyTrade = globalThis.HatchrCopy ? globalThis.HatchrCopy.clean(copyTrade) : null;
         if (msg.includeHistory !== false) data.deploys = deploys.filter((d) => !d.pending);
         return makeBackup(data, { password: msg.password || "", extVersion: chrome.runtime.getManifest().version });
       })()), true;
@@ -1299,6 +1353,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // callout automode: restored with both switches off, the way the launcher arrives paused
         if (data.calloutAuto && typeof data.calloutAuto === "object" && globalThis.HatchrCalloutFilters) patch.coAuto = { ...globalThis.HatchrCalloutFilters.cleanConfig(data.calloutAuto), enabled: false, ownBuys: false };
         if (Array.isArray(data.calloutHidden)) patch.coHidden = data.calloutHidden.filter((x) => typeof x === "string").slice(0, 5000);
+        // CA buy arrives switched off (it spends money by itself); pump alerts arrive as they were (they only tell you)
+        if (data.caBuy && typeof data.caBuy === "object" && globalThis.HatchrCaBuy) patch.caBuy = { ...globalThis.HatchrCaBuy.clean(data.caBuy), enabled: false };
+        if (data.pumpAlerts && typeof data.pumpAlerts === "object" && globalThis.HatchrPumpAlerts) patch.pumpAlerts = globalThis.HatchrPumpAlerts.clean(data.pumpAlerts);
+        // like CA buy, copy trade spends SOL by itself: it arrives switched off
+        if (data.copyTrade && typeof data.copyTrade === "object" && globalThis.HatchrCopy) patch.copyTrade = { ...globalThis.HatchrCopy.clean(data.copyTrade), enabled: false };
         let added = 0;
         if (Array.isArray(data.deploys) && data.deploys.length) {
           await withLock(async () => {
@@ -1479,23 +1538,33 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return reply(testSetup()), true;
     case "axiomStatus":
       protectTab(sender.tab?.id);
-      getSettingsRaw().then((s) => { if (watchingOn(s)) chrome.storage.local.set({ axiomStatus: { ...msg.status, at: Date.now() } }); }).catch(() => {});
+      getSettingsRaw().then(readingPosts).then((on) => { if (on) chrome.storage.local.set({ axiomStatus: { ...msg.status, at: Date.now() } }); }).catch(() => {});
       sendResponse({ ok: true });
       return false;
     case "saveSettings":
       return reply(saveSettings(msg.patch)), true;
+    case "reconnectSources":
+      if (sender?.id !== chrome.runtime.id || sender?.url !== chrome.runtime.getURL("sidepanel.html")) { sendResponse({ ok: false, error: "Not allowed from here" }); return false; }
+      return reply((async () => {
+        const out = await reconnectTabs(true);
+        let tabs = [];
+        try { tabs = await chrome.tabs.query({ url: ["https://axiom.trade/*"] }); } catch {}
+        if (!tabs.length) { await chrome.tabs.create({ url: AXIOM_URL, pinned: true, active: false }).catch(() => {}); out.opened = 1; }
+        return out;
+      })()), true;
     default:
       return false;
   }
 });
 
 // ---------- what the callout automode may use ----------
-// callout-auto.js (a plain script loaded next to this file, like callout-client.js) runs the automatic callouts.
-// It gets exactly these functions and nothing else.
+// callout-auto.js (automatic callouts), ca-buy.js (buy a contract address an X account posts) and pump-alerts.js
+// (tell me when a coin I hold jumps) are plain scripts loaded next to this file, like callout-client.js.
+// They get exactly these functions and nothing else.
 globalThis.HatchrCore = Object.freeze({
   settings: getSettings, secret: getSecret, keypair: parseSecret, rpc, balance: getBalanceSol, tokenBalance: getTokenBalance,
   send: sendTx, simulate: simulateTx, confirm: waitConfirm, Tx: VersionedTransaction, PublicKey: PublicKeyStr,
-  texts: calloutTexts, useAi: aiReady, saveHeld: updateHeld, lock: withLock, solPrice, notify, watching: watchingOn,
+  texts: calloutTexts, useAi: aiReady, saveHeld: updateHeld, lock: withLock, solPrice, notify, sound: playSound, watching: watchingOn,
   socket: () => pumpWs, reconnect: ensurePumpSocket, scanHeld,
   isDesktop: chrome.runtime.id === "hatchr-desktop",
 });

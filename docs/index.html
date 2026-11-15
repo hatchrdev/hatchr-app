@@ -620,6 +620,13 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
     <h3 class="tk-sub">Judge it by what ships</h3>
     <p>The last releases, straight from the changelog.</p>
     <ul class="shipped">
+      <li><span class="v">3.9.0</span><span class="what">A Trade tab for everything that trades by itself. Copy trade per wallet (own size, own sells, own exits, or only the coins a wallet creates). Automatic exits for Hatchr's buys: take profit in steps, stop loss, trailing stop, market cap, time. ⚡ Boost: the fee the network asks right now, capped. Fields only show when they apply. The open panel asks the background about 1 time a minute instead of 97.</span></li>
+      <li><span class="v">3.8.0</span><span class="what">Launch watch: an account posts “$COIN” and a picture without an address, and Hatchr buys the first new coin with that ticker and picture (fakes from other wallets are skipped once it knows the dev). Copy trade: buy, and optionally sell, when a wallet you follow does.</span></li>
+      <li><span class="v">3.7.4</span><span class="what">Pump alerts no longer report a coin that is not moving: each coin keeps one price source, and a jump has to show twice in a row with real trades.</span></li>
+      <li><span class="v">3.7.3</span><span class="what">An on/off switch at the top of every tab. CA buy, auto callouts and pump alerts run on their own switch, also with the Feed off. After an update the open Axiom tab reconnects by itself, and the CA buy page shows whether each account's posts arrive.</span></li>
+      <li><span class="v">3.7.2</span><span class="what">CA buy checks what a pump.fun coin is priced in before it sends, so a coin on the bonding curve that is not priced in SOL is bought through Jupiter instead of failing. A post's age is measured to the millisecond.</span></li>
+      <li><span class="v">3.7.1</span><span class="what">CA buy also buys coins that are not priced in SOL (paired with USDC or another coin), through Jupiter. Pump alerts price those coins too.</span></li>
+      <li><span class="v">3.7.0</span><span class="what">CA buy: buy the contract address an X account you follow posts, within a blink. Pump alerts: a notification, and a message on your phone, when a coin you hold jumps.</span></li>
       <li><span class="v">3.6.7</span><span class="what">Automatic callouts: call out a coin right after you buy it, or let Hatchr buy coins that pass your own filters and call them out. Your own callout texts, timing and market-cap rules, hidden coins, and all of it in the backup.</span></li>
       <li><span class="v">3.5.9</span><span class="what">Direct Pump.fun callouts from Hatchr, with saved drafts, clear status messages, and support for the Windows, Mac and Linux apps.</span></li>
       <li><span class="v">3.4.2</span><span class="what">PnL cards post to X with the picture attached, smoother first-run screen, clearer toolbar icon.</span></li>
@@ -864,7 +871,7 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
 
   <section class="read legal" id="privacy" aria-labelledby="privacy-h">
     <div class="head"><h2 id="privacy-h">Privacy policy</h2></div>
-    <p class="updated">Effective 14 November 2026 · Hatchr 3.6</p>
+    <p class="updated">Effective 15 November 2026 · Hatchr 3.7</p>
     <div class="callout">
       <p><strong>The short version:</strong> Hatchr has no servers and collects nothing. Your settings, API keys and wallet keys stay in your own browser. Transactions are signed on your device. The only data that leaves your browser goes directly to the services you set up yourself, so they can do their part of the job.</p>
     </div>
@@ -878,6 +885,7 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
       <li>Recent posts in your feed, coins you launched, small pictures of them, and your claimed creator rewards, which are also used to work out your PnL.</li>
       <li>A short-lived list of coin names seen on pump.fun and Axiom Pulse in the last few hours, used to follow the meta and to spot copies.</li>
       <li>Your automatic-callout settings, filters and callout texts, the coins you hid on the Callouts tab, and a short activity list of what the automatic callouts did.</li>
+      <li>Your CA-buy settings (the X accounts you chose) and pump-alert settings, including the token of your own Telegram bot if you set up phone alerts, and a short list of what each did.</li>
       <li>The last SOL price, if you show amounts in USD, EUR or GBP.</li>
     </ul>
     <p>Wallet keys are stored without encryption inside the extension, like the rest of its settings. Use a separate wallet that only holds what you plan to spend.</p>
@@ -889,11 +897,14 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
       <table>
         <thead><tr><th>Service</th><th>What is sent</th><th>Why</th></tr></thead>
         <tbody>
-          <tr><td>PumpPortal</td><td>Your wallet's public address, the coin's name, ticker and metadata link, trade amounts</td><td>Builds the create, buy, sell and claim transactions, which Hatchr signs locally. Buys are only built by the automatic callouts, when you switch them on.</td></tr>
+          <tr><td>PumpPortal</td><td>Your wallet's public address, the coin's name, ticker and metadata link, trade amounts</td><td>Builds the create, buy, sell and claim transactions, which Hatchr signs locally. Buys are only built by the automatic callouts and by CA buy, when you switch them on.</td></tr>
           <tr><td>PumpPortal data stream</td><td>A request to receive new and graduating coins. With automatic callouts on: also the addresses of coins whose trades Hatchr follows, and, for "call out my own buys", your wallet's public address</td><td>Follows the pump.fun meta, measures coins against your callout filters and notices your own buys. Runs only while AI naming and the meta, or automatic callouts, are on.</td></tr>
           <tr><td>Pump.fun callouts</td><td>The coin address, your callout text, and the Pump.fun login cookies managed by your browser or the desktop app</td><td>Publishes a callout when you press Send callout, or by itself if you switched automatic callouts on (off by default). The text is public. Hatchr does not copy the session cookies into its settings or backups.</td></tr>
-          <tr><td>Your Solana RPC (e.g. Helius)</td><td>Signed transactions; balance, token, transaction and reward lookups for your wallet; name lookups for coins; with "call out my own buys" on, a live subscription to your wallet's public address</td><td>Sends transactions, reads balances and notices your own buys</td></tr>
-          <tr><td>The coin's own metadata file (usually an IPFS gateway such as ipfs.io)</td><td>Only a request for that public file; nothing about you</td><td>Reads a coin's links and description for your callout filters. Only while automatic buying is on and a filter needs them.</td></tr>
+          <tr><td>Your Solana RPC (e.g. Helius)</td><td>Signed transactions; balance, token, transaction and reward lookups for your wallet; name lookups for coins; with "call out my own buys" on, a live subscription to your wallet's public address; with copy trade on, a live subscription to the public addresses of the wallets you copy; with Boost on, the network's recent priority fees</td><td>Sends transactions, reads balances and notices your own buys</td></tr>
+          <tr><td>Jupiter</td><td>Your wallet's public address, the coin's address and the buy amount</td><td>Builds the buy for a coin PumpPortal cannot buy (one that is not priced in SOL). Only while CA buy is on.</td></tr>
+          <tr><td>DexScreener</td><td>The addresses of the coins in your wallet; nothing else about you</td><td>Reads their prices for pump alerts, and for the automatic exits of coins Hatchr bought once they left the bonding curve. Only while one of them is on.</td></tr>
+          <tr><td>Telegram (your own bot)</td><td>Your bot's token and the alert text: coin, price move, what your holding is worth</td><td>Sends pump alerts, and buys and callouts if you choose, to your phone. Only if you set up phone alerts.</td></tr>
+          <tr><td>The coin's own metadata file (usually an IPFS gateway such as ipfs.io)</td><td>Only a request for that public file; nothing about you</td><td>Reads a coin's links, description and picture for your callout filters and for the launch watch. Only while one of them is on and needs them.</td></tr>
           <tr><td>Pinata (IPFS)</td><td>The coin image and metadata, including the link to the source post</td><td>Coin images must be public. Anything uploaded to IPFS is public and permanent.</td></tr>
           <tr><td>Your AI provider</td><td>The text of a post, its context, and a short summary of current coin names</td><td>Suggests a name, ticker and score. Optional.</td></tr>
           <tr><td>Cloudflare Workers AI or OpenAI</td><td>An image description; frames from a video post for picking the best one</td><td>Generates or chooses the coin picture. Optional.</td></tr>
