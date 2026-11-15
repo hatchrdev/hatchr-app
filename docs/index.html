@@ -838,26 +838,27 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
   <section class="wide" id="desktop" aria-labelledby="desktop-h">
     <div class="head"><span class="eyebrow">Also on desktop</span><h2 id="desktop-h">Rather not use Chrome? Get the app.</h2><p>The same Hatchr in its own window, for Windows, Mac and Linux. Axiom and X open inside the app, and your wallet and keys stay on your computer. The Chrome extension is still the quickest way to start.</p></div>
     <figure class="app-shot"><img src="img/desktop-app.jpg" width="2080" height="1400" loading="lazy" alt="The Hatchr desktop app on Windows: its own title bar with Axiom, X and Quit buttons, and the feed with coin cards side by side"></figure>
+    <p style="margin:0 0 18px;padding:12px 16px;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.08);border-radius:12px;color:#fbbf24;font-weight:600">Desktop downloads are offline for the moment while we move our files to a new host. The Chrome extension is not affected.</p>
     <div class="dl">
       <article class="os" data-os="win">
         <div class="os-top"><h3>Windows</h3><span class="pill mine-tag" hidden>Your computer</span></div>
         <p class="file">Windows 10 and 11 · 64-bit<br>Hatchr-Setup.exe · 157 MB</p>
-        <a class="btn ghost dl-go" data-file="Hatchr-Setup.exe" href="https://github.com/sologgg/hatchr/releases/latest/download/Hatchr-Setup.exe">Download for Windows</a>
-        <p class="alt"><a class="dl-go" data-file="Hatchr-win.zip" href="https://github.com/sologgg/hatchr/releases/latest/download/Hatchr-win.zip">Portable zip</a>, no install needed</p>
+        <a class="btn ghost dl-go" data-file="Hatchr-Setup.exe" href="#desktop" aria-disabled="true" style="opacity:.5;pointer-events:none">Download for Windows</a>
+        <p class="alt"><a class="dl-go" data-file="Hatchr-win.zip" href="#desktop" aria-disabled="true" style="opacity:.5;pointer-events:none">Portable zip</a>, no install needed</p>
         <div class="after"><p class="first"><b>First start:</b> if Windows says "Windows protected your PC", click <b>More info</b>, then <b>Run anyway</b>. Hatchr installs itself in a few seconds and opens.</p><div class="started" role="status" hidden></div></div>
       </article>
       <article class="os" data-os="mac">
         <div class="os-top"><h3>Mac</h3><span class="pill mine-tag" hidden>Your computer</span></div>
         <p class="file">macOS 13 or newer · Apple Silicon &amp; Intel<br>Hatchr-mac.dmg · 231 MB</p>
-        <a class="btn ghost dl-go" data-file="Hatchr-mac.dmg" href="https://github.com/sologgg/hatchr/releases/latest/download/Hatchr-mac.dmg">Download for Mac</a>
+        <a class="btn ghost dl-go" data-file="Hatchr-mac.dmg" href="#desktop" aria-disabled="true" style="opacity:.5;pointer-events:none">Download for Mac</a>
         <p class="alt">One download works on every Mac</p>
         <div class="after"><p class="first"><b>First start:</b> drag Hatchr to Applications and open it. If macOS stops it, go to <b>System Settings → Privacy &amp; Security</b> and click <b>Open Anyway</b>.</p><div class="started" role="status" hidden></div></div>
       </article>
       <article class="os" data-os="linux">
         <div class="os-top"><h3>Linux</h3><span class="pill mine-tag" hidden>Your computer</span></div>
         <p class="file">64-bit · most distributions<br>Hatchr-linux.AppImage · 126 MB</p>
-        <a class="btn ghost dl-go" data-file="Hatchr-linux.AppImage" href="https://github.com/sologgg/hatchr/releases/latest/download/Hatchr-linux.AppImage">Download AppImage</a>
-        <p class="alt"><a class="dl-go" data-file="Hatchr-linux.deb" href="https://github.com/sologgg/hatchr/releases/latest/download/Hatchr-linux.deb">.deb package</a> for Ubuntu and Debian</p>
+        <a class="btn ghost dl-go" data-file="Hatchr-linux.AppImage" href="#desktop" aria-disabled="true" style="opacity:.5;pointer-events:none">Download AppImage</a>
+        <p class="alt"><a class="dl-go" data-file="Hatchr-linux.deb" href="#desktop" aria-disabled="true" style="opacity:.5;pointer-events:none">.deb package</a> for Ubuntu and Debian</p>
         <div class="after"><p class="first"><b>First start:</b> make it runnable with <code>chmod +x Hatchr-linux.AppImage</code>, then open it.</p><div class="started" role="status" hidden></div></div>
       </article>
     </div>
@@ -865,7 +866,7 @@ nav.top a.coin-link::before { content: ""; width: 8px; height: 8px; border-radiu
       <p><b>Same features, own windows.</b> Feed, auto mode, test mode, PnL, vanity wallets and all settings work as in the extension. Use the <b>Axiom</b> and <b>X</b> buttons at the top to open them, and sign in there once.</p>
       <p><b>Keeps running.</b> Closing the window keeps Hatchr running so launches continue. Open Hatchr again or click its tray icon to bring it back, and use <b>Quit</b> at the top of the app to stop it.</p>
       <p><b>Separate from the extension.</b> The app has its own settings and wallet. To move yours over, use <b>Export backup</b> in the extension and <b>Import backup</b> in the app.</p>
-      <p><b>Not signed yet,</b> which is why your computer asks once on first start. The app doesn't update itself; new versions appear here and on <a href="https://github.com/sologgg/hatchr/releases" target="_blank" rel="noopener">GitHub</a>.</p>
+      <p><b>Not signed yet,</b> which is why your computer asks once on first start. The app doesn't update itself; new versions appear here.</p>
     </div>
   </section>
 
