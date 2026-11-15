@@ -1,0 +1,143 @@
+# Builds the Hatchr desktop apps on GitLab's free Linux runners and publishes them as a GitLab Release,
+# the same job the GitHub workflow (.github/workflows/release.yml) did before GitHub hid the account.
+#
+# Runs when a tag like v3.9.0 is pushed (or by hand: Build → Pipelines → Run pipeline, with a tag).
+# Every platform is built on Linux:
+#   Windows: electron-builder with Wine and Mono (Squirrel installer + portable zip)
+#   Mac:     the app for Apple Silicon and Intel, given an ad-hoc signature with rcodesign, zipped
+#   Linux:   AppImage and .deb
+# The files go to the project's generic package registry; the release links them with fixed names, so these
+# links always point at the newest release (replace <path> with the project's path, e.g. hatchr/hatchr):
+#   https://gitlab.com/<path>/-/releases/permalink/latest/downloads/Hatchr-Setup.exe
+#   https://gitlab.com/<path>/-/releases/permalink/latest/downloads/Hatchr-win.zip
+#   https://gitlab.com/<path>/-/releases/permalink/latest/downloads/Hatchr-mac-arm64.zip
+#   https://gitlab.com/<path>/-/releases/permalink/latest/downloads/Hatchr-mac-x64.zip
+#   https://gitlab.com/<path>/-/releases/permalink/latest/downloads/Hatchr-linux.AppImage
+#   https://gitlab.com/<path>/-/releases/permalink/latest/downloads/Hatchr-linux.deb
+#   https://gitlab.com/<path>/-/releases/permalink/latest/downloads/Hatchr-extension.zip
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+
+stages: [test, build, release]
+
+default:
+  image: node:22-bookworm
+  cache:
+    key:
+      files: [package-lock.json]
+    paths: [.npm/]
+  before_script:
+    - npm ci --cache .npm --prefer-offline
+
+variables:
+  CSC_IDENTITY_AUTO_DISCOVERY: "false"
+  ELECTRON_CACHE: "$CI_PROJECT_DIR/.cache/electron"
+  ELECTRON_BUILDER_CACHE: "$CI_PROJECT_DIR/.cache/electron-builder"
+  RCODESIGN_VERSION: "0.29.0"
+  RCODESIGN_SHA256: "dbe85cedd8ee4217b64e9a0e4c2aef92ab8bcaaa41f20bde99781ff02e600002"
+  PACKAGE_URL: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/hatchr/${CI_COMMIT_TAG}"
+
+test:
+  stage: test
+  script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends xvfb xauth libnss3 libatk1.0-0 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libasound2 libxss1 libxtst6 > /dev/null
+    - test "v$(node -p "require('./package.json').version")" = "$CI_COMMIT_TAG" || { echo "package.json version does not match the tag $CI_COMMIT_TAG"; exit 1; }
+    - npm test
+    - xvfb-run -a npx electron tests/electron-callouts.cjs --no-sandbox
+    - xvfb-run -a npx electron tests/electron-callout-auto.cjs --no-sandbox
+
+linux:
+  stage: build
+  script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends zip > /dev/null
+    - npx electron-builder --linux --publish never
+    # the unpacked Chrome extension, as before
+    - cd app && zip -qr ../dist/Hatchr-extension.zip . -x 'background.html' 'tests/*'
+  artifacts:
+    expire_in: 1 day
+    paths: [dist/Hatchr-linux.AppImage, dist/Hatchr-linux.deb, dist/Hatchr-extension.zip]
+
+windows:
+  stage: build
+  script:
+    - dpkg --add-architecture i386
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends wine wine64 wine32:i386 mono-complete xvfb xauth > /dev/null
+    # electron-winstaller looks for a command called wine64
+    - command -v wine64 || ln -sf "$(ls /usr/lib/wine/wine64 2>/dev/null || command -v wine)" /usr/local/bin/wine64
+    - WINEDEBUG=-all xvfb-run -a npx electron-builder --win --x64 --publish never
+    - cp dist/squirrel-windows/Hatchr-Setup.exe dist/
+  artifacts:
+    expire_in: 1 day
+    paths: [dist/Hatchr-Setup.exe, dist/Hatchr-win.zip]
+
+mac:
+  stage: build
+  script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends zip > /dev/null
+    # a dmg and a universal app can only be made on a Mac, so: one app per processor, zipped
+    - npx electron-builder --mac dir --arm64 --x64 --publish never
+    - curl -fsSL -o /tmp/rc.tgz "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${RCODESIGN_VERSION}/apple-codesign-${RCODESIGN_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+    - echo "${RCODESIGN_SHA256}  /tmp/rc.tgz" | sha256sum -c -
+    - mkdir -p /tmp/rc && tar -xzf /tmp/rc.tgz -C /tmp/rc && RC="$(find /tmp/rc -name rcodesign -type f)"
+    # ad-hoc signature, as electron-builder gives it on a Mac ("identity": "-"); macOS then asks once (Open Anyway)
+    - '"$RC" sign dist/mac-arm64/Hatchr.app'
+    - '"$RC" sign dist/mac/Hatchr.app'
+    - (cd dist/mac-arm64 && zip -qry --symlinks ../Hatchr-mac-arm64.zip Hatchr.app)
+    - (cd dist/mac && zip -qry --symlinks ../Hatchr-mac-x64.zip Hatchr.app)
+  artifacts:
+    expire_in: 1 day
+    paths: [dist/Hatchr-mac-arm64.zip, dist/Hatchr-mac-x64.zip]
+
+upload:
+  stage: release
+  cache: []
+  before_script: []
+  needs: [linux, windows, mac]
+  script:
+    - cd dist && sha256sum Hatchr-* > SHA256SUMS.txt && cat SHA256SUMS.txt
+    - |
+      for f in Hatchr-Setup.exe Hatchr-win.zip Hatchr-mac-arm64.zip Hatchr-mac-x64.zip Hatchr-linux.AppImage Hatchr-linux.deb Hatchr-extension.zip SHA256SUMS.txt; do
+        curl --fail-with-body -sS --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file "$f" "${PACKAGE_URL}/$f"
+        echo " uploaded $f"
+      done
+
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/cli:latest
+  cache: []
+  before_script: []
+  needs: [upload]
+  script:
+    - echo "Release ${CI_COMMIT_TAG}"
+  release:
+    tag_name: $CI_COMMIT_TAG
+    name: "Hatchr ${CI_COMMIT_TAG}"
+    description: |
+      Hatchr desktop app. The main way to use Hatchr is the Chrome extension; this is the same tool as a standalone app. Website and privacy policy: https://hatchr.pro
+
+      | System | File |
+      |---|---|
+      | Windows 10/11 (64-bit) | **Hatchr-Setup.exe** (installer) or Hatchr-win.zip (portable) |
+      | macOS 13 or newer, Apple Silicon (M1 and later) | **Hatchr-mac-arm64.zip** |
+      | macOS 13 or newer, Intel | **Hatchr-mac-x64.zip** |
+      | Linux (64-bit) | **Hatchr-linux.AppImage** or Hatchr-linux.deb |
+      | Chrome / Chromium (unpacked) | **Hatchr-extension.zip** |
+
+      **First start**
+      - Windows: SmartScreen may say "Windows protected your PC". Click *More info*, then *Run anyway*. Hatchr then installs by itself in a few seconds and opens.
+      - macOS: open the zip, drag Hatchr into Applications and open it. If macOS stops it, go to System Settings → Privacy & Security and click *Open Anyway*.
+      - Linux: make the AppImage executable (`chmod +x Hatchr-linux.AppImage`) and run it, or install the deb.
+
+      Checksums: SHA256SUMS.txt
+    assets:
+      links:
+        - { name: "Hatchr-Setup.exe (Windows installer)", url: "${PACKAGE_URL}/Hatchr-Setup.exe", filepath: "/Hatchr-Setup.exe", link_type: package }
+        - { name: "Hatchr-win.zip (Windows portable)", url: "${PACKAGE_URL}/Hatchr-win.zip", filepath: "/Hatchr-win.zip", link_type: package }
+        - { name: "Hatchr-mac-arm64.zip (Mac, Apple Silicon)", url: "${PACKAGE_URL}/Hatchr-mac-arm64.zip", filepath: "/Hatchr-mac-arm64.zip", link_type: package }
+        - { name: "Hatchr-mac-x64.zip (Mac, Intel)", url: "${PACKAGE_URL}/Hatchr-mac-x64.zip", filepath: "/Hatchr-mac-x64.zip", link_type: package }
+        - { name: "Hatchr-linux.AppImage", url: "${PACKAGE_URL}/Hatchr-linux.AppImage", filepath: "/Hatchr-linux.AppImage", link_type: package }
+        - { name: "Hatchr-linux.deb", url: "${PACKAGE_URL}/Hatchr-linux.deb", filepath: "/Hatchr-linux.deb", link_type: package }
+        - { name: "Hatchr-extension.zip (Chrome, unpacked)", url: "${PACKAGE_URL}/Hatchr-extension.zip", filepath: "/Hatchr-extension.zip", link_type: package }
+        - { name: "SHA256SUMS.txt", url: "${PACKAGE_URL}/SHA256SUMS.txt", filepath: "/SHA256SUMS.txt", link_type: other }
