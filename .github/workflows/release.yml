@@ -1,10 +1,14 @@
-# Builds Hatchr desktop for Windows, macOS and Linux on their own machines, then puts all
+# Builds Hatchr desktop for Windows (on Windows), macOS and Linux (both on Linux), then puts all
 # installers on one GitHub Release named after the version in package.json (v3.3.0 ...).
 # Runs on every push to main that changes the app, on a v* tag, or by hand from the Actions tab.
 # Pushing the same version again replaces that release's files; bump "version" for a new release.
 # File names have no version in them, so these links always point at the newest build:
 #   https://github.com/hatchrdev/hatchr-app/releases/latest/download/Hatchr-Setup.exe
-#   https://github.com/hatchrdev/hatchr-app/releases/latest/download/Hatchr-mac.dmg
+#   https://github.com/hatchrdev/hatchr-app/releases/latest/download/Hatchr-mac-arm64.zip   (Apple Silicon)
+#   https://github.com/hatchrdev/hatchr-app/releases/latest/download/Hatchr-mac-x64.zip     (Intel)
+# The Mac app is built on Linux: GitHub's Mac machines were not available to this account (jobs were cancelled
+# with "not acquired by a runner"). A dmg and a universal app need a Mac, so it is one zipped app per processor,
+# given the same ad-hoc signature electron-builder gives on a Mac, with rcodesign (pinned, checksum checked).
 #   https://github.com/hatchrdev/hatchr-app/releases/latest/download/Hatchr-linux.AppImage
 #   https://github.com/hatchrdev/hatchr-app/releases/latest/download/Hatchr-linux.deb
 name: Build desktop apps
@@ -44,8 +48,8 @@ jobs:
           - os: windows-latest
             target: --win --x64
             name: windows
-          - os: macos-latest
-            target: --mac
+          - os: ubuntu-latest
+            target: --mac dir --arm64 --x64
             name: mac
           - os: ubuntu-latest
             target: --linux
@@ -73,6 +77,18 @@ jobs:
         run: cp dist/squirrel-windows/Hatchr-Setup.exe dist/ && ls -la dist dist/squirrel-windows
       - if: matrix.name == 'linux'
         run: cd app && zip -r ../dist/Hatchr-extension.zip . -x 'background.html' 'tests/*'
+      - if: matrix.name == 'mac'
+        name: Sign the Mac apps (ad-hoc) and zip them
+        run: |
+          curl -fsSL -o /tmp/rc.tgz "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.29.0/apple-codesign-0.29.0-x86_64-unknown-linux-musl.tar.gz"
+          echo "dbe85cedd8ee4217b64e9a0e4c2aef92ab8bcaaa41f20bde99781ff02e600002  /tmp/rc.tgz" | sha256sum -c -
+          mkdir -p /tmp/rc && tar -xzf /tmp/rc.tgz -C /tmp/rc
+          RC="$(find /tmp/rc -name rcodesign -type f)"
+          "$RC" sign dist/mac-arm64/Hatchr.app
+          "$RC" sign dist/mac/Hatchr.app
+          (cd dist/mac-arm64 && zip -qry --symlinks ../Hatchr-mac-arm64.zip Hatchr.app)
+          (cd dist/mac && zip -qry --symlinks ../Hatchr-mac-x64.zip Hatchr.app)
+          ls -la dist
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: hatchr-${{ matrix.name }}
@@ -80,7 +96,8 @@ jobs:
           path: |
             dist/Hatchr-Setup.exe
             dist/Hatchr-win.zip
-            dist/Hatchr-mac.dmg
+            dist/Hatchr-mac-arm64.zip
+            dist/Hatchr-mac-x64.zip
             dist/Hatchr-linux.AppImage
             dist/Hatchr-linux.deb
             dist/Hatchr-extension.zip
@@ -115,7 +132,8 @@ jobs:
             | System | File |
             |---|---|
             | Windows 10/11 (64-bit) | **Hatchr-Setup.exe** (installer) or Hatchr-win.zip (portable) |
-            | macOS 13 Ventura or newer (Apple Silicon and Intel) | **Hatchr-mac.dmg** |
+            | macOS 13 Ventura or newer, Apple Silicon (M1 and later) | **Hatchr-mac-arm64.zip** |
+            | macOS 13 Ventura or newer, Intel | **Hatchr-mac-x64.zip** |
             | Linux (64-bit) | **Hatchr-linux.AppImage** or Hatchr-linux.deb |
             | Chrome / Chromium (unpacked) | **Hatchr-extension.zip** |
 
@@ -125,6 +143,6 @@ jobs:
 
             **First start**
             - Windows: SmartScreen may say "Windows protected your PC". Click *More info*, then *Run anyway*. Hatchr then installs by itself in a few seconds and opens.
-            - macOS: open the dmg, drag the egg into Applications, open it once, then go to System Settings → Privacy & Security and click *Open Anyway*.
+            - macOS: open the zip, drag Hatchr into Applications and open it. If macOS stops it, go to System Settings → Privacy & Security and click *Open Anyway*.
             - Linux: make the AppImage executable (`chmod +x Hatchr-linux.AppImage`) and run it, or install the deb.
           files: out/*
