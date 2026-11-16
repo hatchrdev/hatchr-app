@@ -88,6 +88,9 @@ app.whenReady().then(async () => {
     assert.equal(pumps.data.config.risePct, 75);
     assert.equal(await run('typeof HatchrPositions'), 'undefined', 'positions run in the engine, not the panel');
     assert.equal(await inEngine('typeof HatchrPositions.open === "function" && typeof HatchrRoutes.feeEstimate === "function"'), true);
+    // 3.9.4: the watchlist runs in the engine and has its own Trade page
+    assert.equal(await inEngine('typeof HatchrWatch.poll === "function" && HatchrWatch.num("4k") === 4000'), true);
+    assert.equal(await run('!!document.querySelector(\'#subtabs button[data-sub="watch"]\') || !!document.querySelector(\'.trade-page[data-page="watch"]\')'), true);
     console.log('PASS: the Trade tab (CA buy, copy trade, positions, pump alerts, auto callouts) renders and saves in the desktop panel');
 
     // the callout window offers the saved texts, and the backup carries the settings

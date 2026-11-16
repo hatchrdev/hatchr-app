@@ -1188,6 +1188,7 @@ const TRADE_SUBS = [
   ["copy", "🔁", "Copy trade"],      // buy (and sell) when a wallet you follow does
   ["positions", "💼", "Positions"],  // what Hatchr bought, with its automatic exits
   ["pumps", "📈", "Pump alerts"],    // tell me when a coin I hold jumps
+  ["watch", "👀", "Watchlist"],      // tell me when a coin I am watching reaches a market cap (dumps to $4k, …)
   ["callauto", "📣", "Auto callouts"], // buy new coins that pass filters and call them out
 ];
 let tradeSub = TRADE_SUBS.some(([s]) => s === store.get("hatchr.tradeSub")) ? store.get("hatchr.tradeSub") : "cabuy";

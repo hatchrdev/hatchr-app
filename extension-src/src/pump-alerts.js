@@ -312,7 +312,8 @@
   } catch (e) { console.warn("pump alerts listeners", e); }
 
   // Other parts of Hatchr (CA buys, automatic callouts) send their news to the phone through here.
-  globalThis.HatchrPush = Object.freeze({ event: text => { if (cfg.tgEvents) push(text); }, send: push });
-  globalThis.HatchrPumpAlerts = Object.freeze({ clean, judge, poll, DEFAULTS });
+  globalThis.HatchrPush = Object.freeze({ event: text => { if (cfg.tgEvents) push(text); }, send: push, ready: () => !!(cfg.tgOn && cfg.tgToken && cfg.tgChat), error: () => st.pushError });
+  // the watchlist (coin-watch.js) reads prices the same way
+  globalThis.HatchrPumpAlerts = Object.freeze({ clean, judge, poll, DEFAULTS, dexPairs, fromDexScreener, fromCurves });
   init();
 })();

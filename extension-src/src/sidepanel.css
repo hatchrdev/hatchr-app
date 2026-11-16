@@ -781,3 +781,7 @@ body.gold .top { border-bottom-color: rgba(var(--gold-rgb), .28); }
 .pos-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 
 .wadd input { background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 7px 8px; color: var(--text); }
+
+/* watchlist (3.9.4) */
+.ca-ok { color: var(--green); }
+.pos-btns a.mini { text-decoration: none; display: inline-flex; align-items: center; }

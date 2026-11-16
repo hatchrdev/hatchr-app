@@ -74,6 +74,15 @@ wallet, RPC, stream and callout API) and `tests/electron-callout-auto.cjs` (the 
   up Y% within Z minutes, raises a desktop notification, a sound and, when set up, a message to your phone through
   your own Telegram bot. It only tells you; nothing is sold.
 
+**Watchlist (3.9.4)**, `coin-watch.js` (Trade → 👀 Watchlist): coins you keep an eye on with a market-cap alert, at
+or below and/or at or above a level ("tell me when it dumps to $4k"). A coin still on the bonding curve is read from the
+curve (exact, alerts on the first reading), other coins from DexScreener from a pinned pool (a level has to show twice
+in a row). After an alert the level re-arms once the market cap has moved 25% back. Alerts: notification (click opens
+the coin on Axiom), sound, the list, and Telegram through pump alerts' bot. Nothing is bought or sold. A DexScreener or
+Axiom link holds a pool address; the coin in it is looked up.
+
+**Copy trade: Duplicate (3.9.4)**: every wallet card can be duplicated for another address with the same settings.
+
 **Coins priced in another pump coin (3.9.2)**, `src/lib/hops.js`: pump.fun lets a coin be paired with another pump coin
 ($Daddy priced in $Huang, $Huang in SOL). PumpPortal and Jupiter cannot trade those with SOL; pump.fun's own
 `multi_hop_swap` can, SOL → Huang → Daddy in one transaction. Built with pump.fun's official SDK

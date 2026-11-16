@@ -31,6 +31,7 @@ export default {
   "Auto callouts": "Automatische Callouts",
   "CA buy": "CA-Kauf",
   "Pump alerts": "Pump-Alarme",
+  "Watchlist": "Beobachtungsliste",
   "Copy trade": "Copy-Trading",
   "⚡ Boost: the priority fee follows the network": "⚡ Boost: die Priority Fee folgt dem Netzwerk",
   "A live launch pays what the network asks right now for a fast landing, never more than 0.003 SOL, instead of the fixed fee below.": "Ein echter Launch zahlt, was das Netzwerk gerade für eine schnelle Landung verlangt, nie mehr als 0,003 SOL, statt der festen Gebühr unten.",

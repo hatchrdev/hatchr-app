@@ -13,7 +13,7 @@
   const isDesktop = chrome.runtime.id === "hatchr-desktop";
   const P = () => globalThis.HatchrPanel || null; // sidepanel.js
   const S = () => (P() && P().settings()) || {};
-  const own = { coAuto: null, caBuy: null, pumps: null, copy: null }; // configs of the features that keep their own settings
+  const own = { coAuto: null, caBuy: null, pumps: null, copy: null, coinWatch: null }; // configs of the features that keep their own settings
 
   async function patch(change) {
     if (P()) await P().setSetting(change); // sidepanel.js: saves and redraws the header and the Feed
@@ -21,8 +21,8 @@
     // the Settings form is drawn once; its checkboxes follow, so a later "Save settings" does not undo the switch
     for (const [k, v] of Object.entries(change)) { const el = document.getElementById("s-" + k); if (el && el.type === "checkbox") el.checked = !!v; }
   }
-  const MSG = { coAuto: ["coAutoGet", "coAutoSave"], caBuy: ["caBuyGet", "caBuySave"], pumps: ["pumpGet", "pumpSave"], copy: ["copyGet", "copySave"] };
-  const KEYS = { coAuto: "coAuto", caBuy: "caBuy", pumps: "pumpAlerts", copy: "copyTrade" };
+  const MSG = { coAuto: ["coAutoGet", "coAutoSave"], caBuy: ["caBuyGet", "caBuySave"], pumps: ["pumpGet", "pumpSave"], copy: ["copyGet", "copySave"], coinWatch: ["watchGet", "watchSave"] };
+  const KEYS = { coAuto: "coAuto", caBuy: "caBuy", pumps: "pumpAlerts", copy: "copyTrade", coinWatch: "coinWatch" };
   async function saveOwn(kind, change) {
     const [get, save] = MSG[kind];
     const current = (await call({ type: get })).config;
@@ -68,11 +68,14 @@
     pumps: { label: "Pump alerts", get: () => !!(own.pumps && own.pumps.enabled),
       set: v => { if (v) allow(["https://api.dexscreener.com/*", "https://api.telegram.org/*"]); return saveOwn("pumps", { enabled: v }); },
       on: "You are told when a coin you hold jumps.", off: "No pump alerts." },
+    coinWatch: { label: "Watchlist", get: () => !!(own.coinWatch && own.coinWatch.enabled),
+      set: v => { if (v) allow(["https://api.dexscreener.com/*"]); return saveOwn("coinWatch", { enabled: v }); },
+      on: "You are told when a coin on your watchlist reaches its market cap.", off: "Watchlist alerts are off." },
   };
   const PLACES = {
     feed: ["watch"], launched: ["claim"], callouts: ["coAuto", "coOwn"],
     sources: ["watch", "axiom", "x", "tg", "pumpMeta"], auto: ["auto"], launch: ["claim"], ai: ["ai"], alerts: ["notify", "sound"],
-    "trade:cabuy": ["caBuy", "smart"], "trade:copy": ["copy"], "trade:positions": [], "trade:pumps": ["pumps"], "trade:callauto": ["coOwn", "coAuto"],
+    "trade:cabuy": ["caBuy", "smart"], "trade:copy": ["copy"], "trade:positions": [], "trade:pumps": ["pumps"], "trade:watch": ["coinWatch"], "trade:callauto": ["coOwn", "coAuto"],
   };
   const busy = new Set();
 
@@ -87,7 +90,7 @@
       const keys = PLACES[placeOf(box)] || [];
       const html = keys.map(k => {
         const sw = SWITCHES[k], on = sw.get();
-        const needs = { coAuto: "coAuto", coOwn: "coAuto", caBuy: "caBuy", smart: "caBuy", pumps: "pumps", copy: "copy" }[k], known = !needs || !!own[needs]; // not loaded yet: shown, not usable
+        const needs = { coAuto: "coAuto", coOwn: "coAuto", caBuy: "caBuy", smart: "caBuy", pumps: "pumps", copy: "copy", coinWatch: "coinWatch" }[k], known = !needs || !!own[needs]; // not loaded yet: shown, not usable
         return `<label class="tsw ${on ? "on" : ""}${known ? "" : " unknown"}">
           <span class="tsw-txt"><b>${h(sw.label)}</b><small>${h(on ? sw.on : sw.off)}</small></span>
           <input type="checkbox" role="switch" data-sw="${k}" ${on ? "checked" : ""} ${busy.has(k) || !known ? "disabled" : ""} aria-label="${h(sw.label)}"/><span class="tsw-ui" aria-hidden="true"></span>

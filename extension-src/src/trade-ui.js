@@ -201,6 +201,9 @@
         ${select(`ct-w${i}-sells`, `${k}sells`, "When they sell", w.sells, [["default", `Like below (${c.copySells ? "sell the same share" : "do nothing"})`], ["copy", "Sell the same share of mine"], ["no", "Do nothing"]])}
         ${select(`ct-w${i}-exits`, `${k}exits`, "Automatic exits", w.exits, [["default", "Like below"], ["own", "Own rules for this wallet"], ["none", "None for this wallet"]])}
         <div data-if="${k}exits=own" class="tr-inset">${exitsBlock(`ct-w${i}-x`, `${k}x_`, w.ownExits, fee)}</div>
+        <div class="tr-sub">Duplicate for another wallet</div>
+        <div class="wadd"><input class="ctDupAddr" placeholder="other wallet address" spellcheck="false" autocomplete="off"/><input class="ctDupName" placeholder="name (optional)" spellcheck="false" autocomplete="off"/><button class="ghost" data-x="ctDup" data-i="${i}">Duplicate</button></div>
+        <p class="help ctDupNote">Adds another wallet with exactly these settings: what to copy, size, sells and exits.</p>
         <button class="link danger" data-x="ctDel" data-i="${i}">Remove this wallet</button>
       </div></details>`;
   }
@@ -318,6 +321,65 @@
       <details class="ca-details"><summary>Alerts</summary><div id="paLog">${logHtml(pa.data && pa.data.state.log)}</div><button class="link" data-x="paClear">Clear</button></details>`;
   }
 
+
+  // =====================================================================================================
+  // Watchlist: coins you keep an eye on, with a market-cap alert (coin-watch.js does the watching)
+  // =====================================================================================================
+  const wa = { cfg: null, data: null, dirty: false, note: "", edit: "" };
+  const mcText = v => (v > 0 ? usd(v) : "…");
+  function waStatus() {
+    const d = wa.data;
+    if (!d) return "…";
+    const c = d.config, s = d.state, n = c.items.length;
+    let text = "Off. Switch it on at the top.", tone = "";
+    if (c.enabled && !n) { text = "Add a coin below."; tone = "warn"; }
+    else if (c.enabled && s.error) { text = `Prices could not be read: ${s.error}`; tone = "bad"; }
+    else if (c.enabled && !s.at) { text = "Reading prices…"; tone = "warn"; }
+    else if (c.enabled) { text = `Watching ${n} coin${n === 1 ? "" : "s"}, every ${c.everySec} s. Last read ${clock(s.at)}.`; tone = "ok"; }
+    const phone = c.enabled && c.phone ? `<div class="help">Phone: ${d.phone.ready ? (d.phone.error ? `<span class="ca-bad">${esc(d.phone.error)}</span>` : "connected") : 'not set up (Trade → Pump alerts → "Also on my phone")'}</div>` : "";
+    return `<div class="ca-status ${tone}"><div><b>Watchlist</b></div><div class="ca-now">${esc(text)}</div>${phone}</div>`;
+  }
+  function waLevel(side, s, mc) {
+    if (!s.level) return "";
+    const arrow = side === "below" ? "↓" : "↑", word = side === "below" ? "at or below" : "at or above";
+    const state = s.armed ? `<span class="muted">waiting</span>` : `<span class="ca-ok">hit ${clock(s.firedAt)} at ${usd(s.firedMc)}</span>`;
+    return `<div class="help">${arrow} Alert ${word} <b>${usd(s.level)}</b> · ${state}${!s.armed ? ` <span class="muted">(again after it moves 25% back${mc > 0 ? `; now ${usd(mc)}` : ""})</span>` : ""}</div>`;
+  }
+  function waCard(c) {
+    const name = c.label || (c.ticker ? "$" + c.ticker : c.name || short4(c.mint));
+    const change = c.mc > 0 && c.startMc > 0 ? (c.mc / c.startMc - 1) * 100 : null;
+    const editing = wa.edit === c.mint;
+    return `<div class="pos ${change === null ? "" : change >= 0 ? "up" : "down"}" data-wmint="${esc(c.mint)}">
+      <div class="pos-top"><a href="https://pump.fun/coin/${esc(c.mint)}" target="_blank" rel="noopener noreferrer"><b>${esc(name)}</b></a>${c.label && c.ticker ? ` <span class="muted">$${esc(c.ticker)}</span>` : ""}<span class="pos-pnl">MC ${mcText(c.mc)}</span></div>
+      <div class="help">${c.startMc ? `${usd(c.startMc)} when added` : "No price yet"}${change !== null ? ` · ${change >= 0 ? "+" : ""}${change.toFixed(1)}%` : ""}${c.low ? ` · low ${usd(c.low)} · high ${usd(c.high)}` : ""}${c.src === "curve" ? " · on the bonding curve" : ""}${c.missing > 3 ? ' · <span class="ca-warn">no price found for it</span>' : ""}</div>
+      ${waLevel("below", c.below, c.mc)}${waLevel("above", c.above, c.mc)}
+      ${!c.below.level && !c.above.level ? '<div class="help muted">No alert set: only watched.</div>' : ""}
+      <div class="pos-btns"><a class="mini" href="https://axiom.trade/t/${esc(c.mint)}" target="_blank" rel="noopener noreferrer">Axiom</a><button class="link" data-x="waEdit">Change…</button>${!c.below.armed || !c.above.armed ? '<button class="link" data-x="waRearm">Alert again now</button>' : ""}<button class="link danger" data-x="waRemove">Remove</button></div>
+      ${editing ? `<div class="tr-inset"><div class="wadd"><input class="waEdBelow" placeholder="alert at or below ($), e.g. 4k" value="${c.below.level || ""}" autocomplete="off"/><input class="waEdAbove" placeholder="at or above ($)" value="${c.above.level || ""}" autocomplete="off"/></div>
+        <div class="wadd"><input class="waEdName" placeholder="name (optional)" value="${esc(c.label)}" autocomplete="off"/><button class="ghost" data-x="waEditSave">Save</button><button class="link" data-x="waEditCancel">Cancel</button></div></div>` : ""}
+    </div>`;
+  }
+  function waList() {
+    const coins = (wa.data && wa.data.state.coins) || [];
+    return coins.length ? coins.map(waCard).join("") : '<p class="help">Nothing on the watchlist yet.</p>';
+  }
+  function waForm() {
+    const c = wa.cfg;
+    return `<div id="waStatus">${waStatus()}</div>
+      <p class="help tr-intro">Coins you keep an eye on. Set a market cap and Hatchr tells you when the coin gets there, for example when it dumps to $4k, so you can look at it and buy yourself. Nothing is bought or sold here. Coins still on the bonding curve are read straight from it; the rest from DexScreener, where a level has to show twice in a row.</p>
+      ${sec("Add a coin", `<div class="wadd"><input id="waAddr" placeholder="coin address, or a pump.fun / Axiom / DexScreener link" spellcheck="false" autocomplete="off"/></div>
+        <div class="wadd"><input id="waBelow" placeholder="alert at or below ($ MC), e.g. 4k" autocomplete="off"/><input id="waAbove" placeholder="or at or above, e.g. 50k" autocomplete="off"/></div>
+        <div class="wadd"><input id="waName" placeholder="name (optional)" spellcheck="false" autocomplete="off"/><button class="ghost" data-x="waAdd">Watch</button></div>
+        <p class="help">Write amounts like 4000, 4k or 1.2m. After an alert, the same level alerts again once the market cap has moved 25% back.</p>`)}
+      <div id="waList">${waList()}</div>
+      <div id="waNote" class="help">${wa.note}</div>
+      ${sec("How", `${grid(check("wa-desktop", "desktop", "Notification on this computer", c.desktop, "Click it to open the coin on Axiom."), check("wa-sound", "sound", "Play a sound", c.sound))}
+        ${check("wa-phone", "phone", "Also on my phone (Telegram)", c.phone, "Uses the Telegram bot set up under Pump alerts.")}
+        ${field("wa-everySec", "everySec", "Check every (seconds)", c.everySec, "10 to 120.")}
+        <div class="onboard-row"><button class="ghost" data-x="waSave">Save</button></div>`)}
+      <details class="ca-details" open><summary>Alerts</summary><div id="waLog">${logHtml(wa.data && wa.data.state.log)}</div><button class="link" data-x="waClear">Clear</button></details>`;
+  }
+
   // =====================================================================================================
   // drawing, data, polling (only the page you look at, only while the Trade tab is open)
   // =====================================================================================================
@@ -329,6 +391,7 @@
     copy: { box: "#copyBox", get: "copyGet", obj: ct, form: ctForm, extra: () => ({}) },
     positions: { box: "#posBox", get: "posGet", obj: ps, form: psForm, extra: () => ({}) },
     pumps: { box: "#pumpBox", get: "pumpGet", obj: pa, form: paForm, extra: () => ({}) },
+    watch: { box: "#watchBox", get: "watchGet", obj: wa, form: waForm, extra: () => ({}) },
   };
   function render(id) {
     const pg = PAGES[id], box = pg && $(pg.box);
@@ -345,6 +408,7 @@
     else if (id === "copy") { const s = $("#ctStatus"), l = $("#ctLog"); if (s) s.innerHTML = ctStatus(); if (l) l.innerHTML = logHtml(ct.data.state.log); }
     else if (id === "pumps") { const s = $("#paStatus"), l = $("#paLog"), c = $("#paCoins"); if (s) s.innerHTML = paStatus(); if (l) l.innerHTML = logHtml(pa.data.state.log); if (c) c.innerHTML = paCoins() || '<p class="help">No prices yet.</p>'; }
     else if (id === "positions") { if (!ps.edit) render(id); else { const l = $("#psLog"); if (l) l.innerHTML = logHtml(ps.data.log); } }
+    else if (id === "watch") { const s = $("#waStatus"), l = $("#waLog"), w = $("#waList"); if (s) s.innerHTML = waStatus(); if (l) l.innerHTML = logHtml(wa.data.state.log); if (w && !wa.edit) w.innerHTML = waList(); }
   }
   async function load(id) {
     const pg = PAGES[id];
@@ -413,6 +477,21 @@
         ct.cfg = { ...ct.cfg, ...draft }; ct.dirty = true; ct.open = draft.wallets.length - 1;
         ct.note = "Added. Press Save to start following it.";
         render("copy");
+      } else if (act === "ctDup" && xBox) {
+        // a second wallet with this wallet's settings, including edits not saved yet
+        const i = Number(btn.dataset.i), card = btn.closest(".wcard");
+        const address = String(card.querySelector(".ctDupAddr").value || "").trim(), name = String(card.querySelector(".ctDupName").value || "").trim();
+        if (!ADDRESS.test(address)) throw new Error("That is not a Solana wallet address.");
+        const draft = ctRead(xBox), from = draft.wallets[i];
+        if (!from) throw new Error("That wallet is gone from the list; open the page again.");
+        if (draft.wallets.some(w => w.address === address)) throw new Error("That wallet is already on the list.");
+        const copy = JSON.parse(JSON.stringify({ ...from, address, label: name || (from.label ? `${from.label} 2` : ""), on: true }));
+        draft.wallets.splice(i + 1, 0, copy);
+        ct.cfg = { ...ct.cfg, ...draft }; ct.dirty = true; ct.open = i + 1;
+        ct.note = `Duplicated ${from.label ? `“${from.label}”` : short4(from.address)} for ${copy.label ? `“${copy.label}”` : short4(address)} with the same settings. Press Save to start following it.`;
+        render("copy");
+        const added = document.querySelector(`#copyBox .wcard[data-w="${i + 1}"]`);
+        if (added) added.scrollIntoView({ block: "nearest" });
       } else if (act === "ctDel" && xBox) {
         const draft = ctRead(xBox), i = Number(btn.dataset.i);
         draft.wallets.splice(i, 1);
@@ -450,6 +529,29 @@
         if (pa.cfg.tgOn && !(pa.cfg.tgToken && pa.cfg.tgChat)) pa.note += ' <span class="ca-warn">The phone is not connected yet: paste the token, press Connect, then Save.</span>';
         render("pumps");
       } else if (act === "paClear") { pa.data = await send({ type: "pumpClearLog" }); refresh("pumps"); }
+      else if (act === "waAdd") {
+        const address = String($("#waAddr").value || "").trim();
+        if (!address) throw new Error("Paste a coin address or link first.");
+        allow(["https://api.dexscreener.com/*"]);
+        btn.disabled = true; btn.textContent = "Looking it up…";
+        wa.data = await send({ type: "watchAdd", address, below: $("#waBelow").value, above: $("#waAbove").value, label: $("#waName").value });
+        wa.cfg = wa.data.config; wa.note = wa.data.note || "Added."; render("watch");
+      } else if (act === "waSave") {
+        const box = $("#watchBox"), now = await stored("coinWatch");
+        wa.data = await send({ type: "watchSave", config: { ...read(box), enabled: now.enabled === true } });
+        wa.cfg = wa.data.config; wa.dirty = false; wa.note = "Saved."; render("watch");
+      } else if (act === "waClear") { wa.data = await send({ type: "watchClearLog" }); refresh("watch"); }
+      else if (act.startsWith("wa")) {
+        const card = btn.closest("[data-wmint]"), mint = card && card.dataset.wmint;
+        if (!mint) return;
+        if (act === "waEdit") { wa.edit = mint; render("watch"); }
+        else if (act === "waEditCancel") { wa.edit = ""; render("watch"); }
+        else if (act === "waEditSave") {
+          wa.data = await send({ type: "watchEdit", mint, below: card.querySelector(".waEdBelow").value, above: card.querySelector(".waEdAbove").value, label: card.querySelector(".waEdName").value });
+          wa.edit = ""; wa.cfg = wa.data.config; wa.note = "Alert changed."; render("watch");
+        } else if (act === "waRemove") { wa.data = await send({ type: "watchRemove", mint }); wa.cfg = wa.data.config; wa.note = "Removed from the watchlist."; render("watch"); }
+        else if (act === "waRearm") { wa.data = await send({ type: "watchRearm", mint }); wa.note = "It will alert again when the level is reached."; render("watch"); }
+      }
       else if (act === "paReset") { pa.data = await send({ type: "pumpReset" }); pa.note = "Every coin is now measured from its price right now."; render("pumps"); }
       else if (act === "paConnect" && paBox) {
         await allow(["https://api.telegram.org/*"]);
@@ -464,7 +566,10 @@
         pa.tgNote = "Sent. Check Telegram on your phone."; const el = $("#paTg"); if (el) el.textContent = pa.tgNote;
       }
     } catch (err) {
-      const target = act.startsWith("cb") ? "#cbNote" : act.startsWith("ct") ? "#ctNote" : act.startsWith("pos") || act.startsWith("ps") ? "#psNote" : act === "paConnect" || act === "paTest" ? "#paTg" : "#paNote";
+      const near = act === "ctDup" && btn.closest(".wcard") && btn.closest(".wcard").querySelector(".ctDupNote");
+      if (near) { near.innerHTML = `<span class="ca-bad">${esc(err.message || err)}</span>`; return; }
+      if (act === "waAdd") { btn.disabled = false; btn.textContent = "Watch"; }
+      const target = act.startsWith("cb") ? "#cbNote" : act.startsWith("ct") ? "#ctNote" : act.startsWith("pos") || act.startsWith("ps") ? "#psNote" : act.startsWith("wa") ? "#waNote" : act === "paConnect" || act === "paTest" ? "#paTg" : "#paNote";
       const el = $(target); if (el) el.innerHTML = `<span class="ca-bad">${esc(err.message || err)}</span>`;
       if (btn.disabled) btn.disabled = false;
     }
@@ -472,10 +577,12 @@
   // typing marks a form as being edited (the poll then leaves it alone) and shows/hides the fields that depend on it
   const typed = e => {
     const cb = e.target.closest("#caBuyBox"), pb = e.target.closest("#pumpBox"), xb = e.target.closest("#copyBox"), pos = e.target.closest(".pos-edit");
-    if (e.target.id === "ctNewAddr" || e.target.id === "ctNewName") return;
+    if (e.target.id === "ctNewAddr" || e.target.id === "ctNewName" || (e.target.classList && (e.target.classList.contains("ctDupAddr") || e.target.classList.contains("ctDupName")))) return;
     if (cb) { ca.dirty = true; ca.cfg = { ...ca.cfg, ...caRead(cb), handles: String(read(cb).handles || "").split(/[\s,]+/).map(h => h.replace(/^@/, "")).filter(Boolean) }; applyIf(cb, PAGES.cabuy.extra()); }
     if (xb) { ct.dirty = true; const card = e.target.closest(".wcard"); if (card) ct.open = Number(card.dataset.w); applyIf(xb); }
     if (pb) { pa.dirty = true; pa.cfg = { ...pa.cfg, ...read(pb) }; applyIf(pb); }
+    const wb = e.target.closest("#watchBox");
+    if (wb && e.target.dataset && e.target.dataset.k) { wa.dirty = true; wa.cfg = { ...wa.cfg, ...read(wb) }; }
     if (pos) applyIf(pos);
   };
   document.addEventListener("input", typed);

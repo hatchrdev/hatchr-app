@@ -716,6 +716,83 @@ const t = async (name, fn) => { await fn(); count++; console.log("ok  " + name);
   const tick = async e => { await e.ctx.HatchrPumpAlerts.poll(); await sleep(30); };
   const paState = async e => (await e.ask({ type: "pumpGet" })).data;
 
+  // ---------- watchlist (3.9.4) ----------
+  const mcPair = (mint, mc, sym = "WAT") => pair(mint, mc / 1e9, sym);
+  const curveB64 = mcUsd => { // a pump.fun curve with 1e9 tokens left and the SOL to make this market cap at $150/SOL
+    const b = new Uint8Array(120), dv = new DataView(b.buffer);
+    dv.setBigUint64(8, 1000000000000000n, true); dv.setBigUint64(16, BigInt(Math.round(mcUsd / 150 * 1e9)), true);
+    return btoa(String.fromCharCode(...b));
+  };
+  const waBoot = async (o = {}) => { const e = boot(["pump-alerts.js", "coin-watch.js"], o); await sleep(150); return e; };
+  const waPoll = async e => { await e.ctx.HatchrWatch.poll(); await sleep(20); };
+  const waLog = async e => (await e.ask({ type: "watchGet" })).data.state.log.map(l => l.text);
+
+  await t("watchlist: amounts like 4k / 1.2m / $40,000", async () => {
+    const e = await waBoot();
+    const n = e.ctx.HatchrWatch.num;
+    assert.strictEqual(n("4k"), 4000); assert.strictEqual(n("1.2m"), 1200000); assert.strictEqual(n("$40,000"), 40000); assert.strictEqual(n(" 4 K "), 4000);
+    assert.strictEqual(n(""), null); assert.strictEqual(n("abc"), null); assert.strictEqual(n("-5"), null);
+    assert.strictEqual(e.ctx.HatchrWatch.big(3900), "$3.90k"); assert.strictEqual(e.ctx.HatchrWatch.big(12400), "$12.4k");
+  });
+
+  await t("watchlist: dumps to $4k → one alert (DexScreener: twice in a row), again only after it moved 25% back", async () => {
+    const e = await waBoot();
+    e.w.dex = [mcPair(PUMP, 10000)];
+    const add = await e.ask({ type: "watchAdd", address: `https://pump.fun/coin/${PUMP}`, below: "4k", label: "" });
+    assert.ok(add.ok, JSON.stringify(add)); assert.strictEqual(add.data.config.enabled, true, "adding a coin switches the watchlist on");
+    assert.strictEqual(add.data.config.items[0].mint, PUMP); assert.strictEqual(add.data.config.items[0].below, 4000);
+    await waPoll(e); assert.strictEqual(e.w.notes.length, 0, "$10k: nothing");
+    e.w.dex = [mcPair(PUMP, 3900)]; await waPoll(e);
+    assert.strictEqual(e.w.notes.length, 0, "first reading at $3.9k: wait for the next one");
+    await waPoll(e);
+    assert.strictEqual(e.w.notes.length, 1, "still there: alert");
+    assert.ok(/👀 \$WAT is down to \$3\.90k market cap/.test(e.w.notes[0][0]), e.w.notes[0][0]);
+    assert.ok(/at or below \$4\.00k\. It was \$10\.0k when you added it/.test(e.w.notes[0][1]), e.w.notes[0][1]);
+    assert.ok(e.w.notes[0][2].startsWith(`watch-${PUMP}-`), "the notification opens the coin");
+    e.w.dex = [mcPair(PUMP, 3500)]; await waPoll(e); await waPoll(e);
+    assert.strictEqual(e.w.notes.length, 1, "lower still: no second alert");
+    e.w.dex = [mcPair(PUMP, 4800)]; await waPoll(e); await waPoll(e);
+    e.w.dex = [mcPair(PUMP, 3800)]; await waPoll(e); await waPoll(e);
+    assert.strictEqual(e.w.notes.length, 1, "back to $4.8k (under +25%) and down again: still quiet");
+    e.w.dex = [mcPair(PUMP, 5100)]; await waPoll(e);
+    e.w.dex = [mcPair(PUMP, 3800)]; await waPoll(e); await waPoll(e);
+    assert.strictEqual(e.w.notes.length, 2, "after $5.1k (25% back) it alerts again");
+    const got = (await e.ask({ type: "watchGet" })).data.state.coins[0];
+    assert.strictEqual(got.low, 3500); assert.strictEqual(got.high, 10000); assert.strictEqual(got.below.armed, false);
+  });
+
+  await t("watchlist: a coin still on the bonding curve alerts on the first reading (exact); a pump to $50k; changing a level arms it again", async () => {
+    const e = await waBoot();
+    e.w.dex = []; e.w.curves = { "CURVE-OF-PENDING": curveB64(12000) };
+    await e.ask({ type: "watchAdd", address: PUMP, below: "4000", above: "50k", label: "dev coin" });
+    await waPoll(e); assert.strictEqual(e.w.notes.length, 0);
+    e.w.curves = { "CURVE-OF-PENDING": curveB64(3800) }; await waPoll(e);
+    assert.strictEqual(e.w.notes.length, 1, "curve: at once");
+    assert.ok(/dev coin is down to \$3\.80k/.test(e.w.notes[0][0]), e.w.notes[0][0]);
+    e.w.curves = { "CURVE-OF-PENDING": curveB64(60000) }; await waPoll(e);
+    assert.strictEqual(e.w.notes.length, 2); assert.ok(/dev coin is up to \$60\.0k/.test(e.w.notes[1][0]), e.w.notes[1][0]);
+    const ed = await e.ask({ type: "watchEdit", mint: PUMP, below: "70k", above: "", label: "dev coin" });
+    assert.strictEqual(ed.data.config.items[0].below, 70000); assert.strictEqual(ed.data.config.items[0].above, null);
+    await sleep(80); await waPoll(e);
+    assert.strictEqual(e.w.notes.length, 3, "a new level counts from now: $60k is under $70k");
+    const rm = await e.ask({ type: "watchRemove", mint: PUMP });
+    assert.strictEqual(rm.data.config.items.length, 0);
+  });
+
+  await t("watchlist: a DexScreener or Axiom link (a pool's address) finds the coin; doubles and junk are refused", async () => {
+    const e = await waBoot();
+    const POOL = "PoolAddressxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+    e.w.dex = url => /latest\/dex\/pairs\/solana\//.test(url) ? { pair: { ...mcPair(PUMP, 9000, "POO"), pairAddress: POOL } } : (url.includes(POOL) ? [] : [mcPair(PUMP, 9000, "POO")]);
+    const add = await e.ask({ type: "watchAdd", address: `https://dexscreener.com/solana/${POOL}`, below: "4k" });
+    assert.ok(add.ok, JSON.stringify(add));
+    assert.strictEqual(add.data.config.items[0].mint, PUMP, "the coin, not the pool");
+    assert.ok(/Watching \$POO \(found from the pool's address\)/.test(add.data.note), add.data.note);
+    const twice = await e.ask({ type: "watchAdd", address: PUMP, below: "3k" });
+    assert.ok(!twice.ok && /already on the watchlist/.test(twice.error), JSON.stringify(twice));
+    const junk = await e.ask({ type: "watchAdd", address: "hello", below: "3k" });
+    assert.ok(!junk.ok && /Paste a coin address/.test(junk.error), JSON.stringify(junk));
+  });
+
   await t("pump alerts: the rules (up X% since the mark, sudden move; seen on two readings in a row; the mark moves up after an alert)", async () => {
     const e = boot(["pump-alerts.js"]); await sleep(120);
     const judge = e.ctx.HatchrPumpAlerts.judge, min = 60000, rules = { risePct: 50, fastPct: 30, fastMin: 5 }, src = { src: "dex:P1" };

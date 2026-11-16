@@ -1,7 +1,7 @@
 {
   "name": "hatchr-extension",
   "private": true,
-  "version": "3.9.3",
+  "version": "3.9.4",
   "description": "Source of the Hatchr Chrome extension. The desktop app wraps the same build (see ../sync.mjs).",
   "type": "module",
   "scripts": {

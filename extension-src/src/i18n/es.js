@@ -31,6 +31,7 @@ export default {
   "Auto callouts": "Callouts automáticos",
   "CA buy": "Compra por CA",
   "Pump alerts": "Alertas de pump",
+  "Watchlist": "Lista de seguimiento",
   "Copy trade": "Copy trading",
   "⚡ Boost: the priority fee follows the network": "⚡ Boost: la comisión de prioridad sigue a la red",
   "A live launch pays what the network asks right now for a fast landing, never more than 0.003 SOL, instead of the fixed fee below.": "Un lanzamiento real paga lo que la red pide ahora para entrar rápido, nunca más de 0,003 SOL, en lugar de la comisión fija de abajo.",

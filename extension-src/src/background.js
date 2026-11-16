@@ -1324,10 +1324,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         data.calloutAuto = globalThis.HatchrCalloutFilters ? globalThis.HatchrCalloutFilters.cleanConfig(coAuto) : null;
         data.calloutHidden = coHidden;
         // CA buy and pump alert settings (the Telegram bot token for phone alerts is in the second one)
-        const { caBuy, pumpAlerts, copyTrade } = await chrome.storage.local.get(["caBuy", "pumpAlerts", "copyTrade"]);
+        const { caBuy, pumpAlerts, copyTrade, coinWatch } = await chrome.storage.local.get(["caBuy", "pumpAlerts", "copyTrade", "coinWatch"]);
         data.caBuy = globalThis.HatchrCaBuy ? globalThis.HatchrCaBuy.clean(caBuy) : null;
         data.pumpAlerts = globalThis.HatchrPumpAlerts ? globalThis.HatchrPumpAlerts.clean(pumpAlerts) : null;
         data.copyTrade = globalThis.HatchrCopy ? globalThis.HatchrCopy.clean(copyTrade) : null;
+        data.coinWatch = globalThis.HatchrWatch ? globalThis.HatchrWatch.clean(coinWatch) : null; // the watchlist
         if (msg.includeHistory !== false) data.deploys = deploys.filter((d) => !d.pending);
         return makeBackup(data, { password: msg.password || "", extVersion: chrome.runtime.getManifest().version });
       })()), true;
@@ -1359,6 +1360,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (data.pumpAlerts && typeof data.pumpAlerts === "object" && globalThis.HatchrPumpAlerts) patch.pumpAlerts = globalThis.HatchrPumpAlerts.clean(data.pumpAlerts);
         // like CA buy, copy trade spends SOL by itself: it arrives switched off
         if (data.copyTrade && typeof data.copyTrade === "object" && globalThis.HatchrCopy) patch.copyTrade = { ...globalThis.HatchrCopy.clean(data.copyTrade), enabled: false };
+        if (data.coinWatch && typeof data.coinWatch === "object" && globalThis.HatchrWatch) patch.coinWatch = globalThis.HatchrWatch.clean(data.coinWatch); // alerts only, nothing is traded
         let added = 0;
         if (Array.isArray(data.deploys) && data.deploys.length) {
           await withLock(async () => {
