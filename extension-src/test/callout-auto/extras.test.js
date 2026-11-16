@@ -643,6 +643,36 @@ const t = async (name, fn) => { await fn(); count++; console.log("ok  " + name);
     assert.deepStrictEqual(buys(e), [0.4, 0.4], "a later buy of their own coin is copied too (every buy is copied here), with this wallet's size");
   });
 
+  await t("copy trade 3.9.1: a coin a followed wallet creates is copied by default, also without a buy of their own", async () => {
+    const LAUNCH = "NoDevBuyCoinxxxxxxxxxxxxxxxxxxxxxxxxxxxpump";
+    // a wallet added without a choice, and a wallet 3.9.0 saved as "their buys" (no v): both copy the launch
+    const e = await ctBoot2({ wallets: [{ address: WHALE, label: "new" }, { address: DEV, label: "old", what: "buys" }] });
+    assert.strictEqual(JSON.stringify(e.ctx.HatchrCopy.clean({ wallets: [{ address: WHALE }] }).wallets.map(w => w.what)), '["both"]');
+    e.tx(["Program log: Instruction: Create", createEvent(LAUNCH, "No Buy", "NOB", WHALE)], 100); await sleep(120);
+    e.tx(["Program log: Instruction: Create", createEvent(CA, "Old Saved", "OLD", DEV)], 101); await sleep(120);
+    assert.deepStrictEqual(buys(e), [0.1, 0.1], "both launches bought, without a dev buy in them");
+    // a choice saved by 3.9.1 (v 2) stays: "their buys" really means only their buys
+    const k = await ctBoot2({ v: 2, wallets: [{ address: WHALE, label: "buys only", what: "buys" }] });
+    k.tx(["Program log: Instruction: Create", createEvent(LAUNCH, "No Buy", "NOB", WHALE)]); await sleep(120);
+    assert.deepStrictEqual(buys(k), [], "kept as chosen");
+  });
+
+  await t("copy trade 3.9.1: a launch the trade services do not know yet is tried again for a few seconds", async () => {
+    const LAUNCH = "TooNewCoinxxxxxxxxxxxxxxxxxxxxxxxxxxxxxpump";
+    const e = await ctBoot2({ wallets: [{ address: WHALE, label: "dev" }] });
+    e.w.portal = 400; e.w.jup = "none";
+    e.tx(["Program log: Instruction: Create", createEvent(LAUNCH, "Too New", "NEW", WHALE)]); await sleep(600);
+    assert.ok(!/failed/.test(await ctLog(e)), "not given up after the first refusals");
+    e.w.portal = 200; e.w.jup = "route";
+    await sleep(1500);
+    assert.ok(/Copied dev's launch: bought 0\.1 SOL of \$NEW/.test(await ctLog(e)), await ctLog(e));
+    // never known: one clear failure, about launches
+    const f = await ctBoot2({ wallets: [{ address: WHALE, label: "dev" }] });
+    f.w.portal = 400; f.w.jup = "none";
+    f.tx(["Program log: Instruction: Create", createEvent(LAUNCH, "Too New", "NEW", WHALE)]); await sleep(7000);
+    assert.ok(/Copy of dev's launch of \$NEW .* failed \(tried for \d+ s\)/.test(await ctLog(f)), await ctLog(f));
+  });
+
   await t("copy trade: a wallet that should not have its sells copied; TEST copies open TEST positions with the wallet's exits", async () => {
     const e = await ctBoot2({ copySells: true, wallets: [{ address: WHALE, label: "w", sells: "no" }] }, { owned: { [ME]: { [PUMP]: 1000 }, [WHALE]: { [PUMP]: 0 } } });
     e.tx([tradeEvent(PUMP, 1e9, 1e9, true, WHALE)]); await sleep(100);

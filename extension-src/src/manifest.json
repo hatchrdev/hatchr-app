@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Hatchr – Memecoin Launcher",
   "short_name": "Hatchr",
-  "version": "3.9.0",
+  "version": "3.9.1",
   "homepage_url": "https://hatchr.pro",
   "description": "Launch pump.fun memecoins from breaking posts in seconds: AI names, images, meta tracking, one-click or auto mode.",
   "minimum_chrome_version": "116",

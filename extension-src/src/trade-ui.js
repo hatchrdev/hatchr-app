@@ -409,7 +409,7 @@
         if (!ADDRESS.test(address)) throw new Error("That is not a Solana wallet address.");
         const draft = ctRead(xBox);
         if (draft.wallets.some(w => w.address === address)) throw new Error("That wallet is already on the list.");
-        draft.wallets.push({ address, label, on: true, what: "buys", size: "default", sells: "default", exits: "default", ownExits: null });
+        draft.wallets.push({ address, label, on: true, what: "both", size: "default", sells: "default", exits: "default", ownExits: null });
         ct.cfg = { ...ct.cfg, ...draft }; ct.dirty = true; ct.open = draft.wallets.length - 1;
         ct.note = "Added. Press Save to start following it.";
         render("copy");
@@ -421,7 +421,7 @@
         render("copy");
       } else if (act === "ctSave" && xBox) {
         const now = await stored("copyTrade");
-        const next = { ...ctRead(xBox), enabled: now.enabled === true };
+        const next = { ...ctRead(xBox), enabled: now.enabled === true, v: 2 };
         allow(["https://lite-api.jup.ag/*", "https://api.dexscreener.com/*"]);
         ct.data = await send({ type: "copySave", config: next });
         ct.cfg = ct.data.config; ct.dirty = false;

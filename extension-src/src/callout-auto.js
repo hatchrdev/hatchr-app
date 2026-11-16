@@ -291,7 +291,8 @@
       feedRetry = 0;
       myWallets.forEach((wallet, i) => ws.send(JSON.stringify({ jsonrpc: "2.0", id: i + 1, method: "logsSubscribe", params: [{ mentions: [wallet] }, { commitment: "confirmed" }] })));
       clearInterval(feedPing);
-      feedPing = setInterval(() => { try { ws.send(JSON.stringify({ jsonrpc: "2.0", id: 999, method: "ping" })); } catch { /* closing */ } }, 45000);
+      // every 20 s: traffic on the connection is what keeps Chrome's background awake while no Hatchr page is open
+      feedPing = setInterval(() => { try { ws.send(JSON.stringify({ jsonrpc: "2.0", id: 999, method: "getHealth" })); } catch { /* closing */ } }, 20000);
     };
     ws.onmessage = event => {
       let msg;

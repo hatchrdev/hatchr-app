@@ -62,7 +62,7 @@
     const maybe = v => (v === null || v === undefined || v === "" ? null : num(v, null));
     return {
       address: String(w.address).trim(), label: String(w.label || "").trim().slice(0, 30), on: w.on !== false,
-      what: WHAT.includes(w.what) ? w.what : "buys",
+      what: WHAT.includes(w.what) ? w.what : "both", // a coin a followed wallet creates is copied unless you say otherwise
       size: SIZES.includes(w.size) ? w.size : "default", sol: maybe(w.sol), ratioPct: maybe(w.ratioPct), maxSol: maybe(w.maxSol),
       sells: SELLS.includes(w.sells) ? w.sells : "default",
       exits: EXIT_MODES.includes(w.exits) ? w.exits : "default", ownExits: w.exits === "own" || w.ownExits ? cleanExits(w.ownExits) : null
@@ -70,9 +70,13 @@
   }
   function clean(input) {
     const c = input && typeof input === "object" ? input : {};
+    // 3.9.0 saved "their buys" for every wallet by default, which skipped a coin they created without buying it
+    // themselves; from 3.9.1 the default is buys + launches. A setting saved by 3.9.1 or later (v 2) stays as chosen.
+    const wallets = walletList(c.wallets).map(w => (c.v === 2 || w.what !== "buys" ? w : { ...w, what: "both" }));
     return {
+      v: 2,
       enabled: c.enabled === true,
-      wallets: walletList(c.wallets),
+      wallets,
       sizeMode: c.sizeMode === "ratio" ? "ratio" : "fixed",
       buySol: num(c.buySol, DEFAULTS.buySol) || DEFAULTS.buySol,
       ratioPct: num(c.ratioPct, DEFAULTS.ratioPct),
@@ -314,9 +318,15 @@
     const undo = () => { delete st.coins[t.mint]; st.buysToday = Math.max(0, st.buysToday - 1); save(); };
     const job = (async () => {
       const C = core(), dry = hot.dryRun;
-      let made;
-      try { made = await R().buy(t.mint, hot.keypair, hot.rpcUrl, { pub: hot.pub, sol, slippage: slip(), priorityFee: fee() }); }
-      catch (e) { undo(); return log("error", `Copy of ${who}'s buy of ${t.mint.slice(0, 6)}… failed: ${short(e, 320)}`, tag); }
+      let made, lastErr = null;
+      // A coin created a moment ago can be unknown to PumpPortal and Jupiter for a second or two: a launch is tried
+      // again for about 6 s before it counts as failed.
+      for (const pause of launch ? [0, 250, 500, 800, 1200, 1500, 2000] : [0]) {
+        if (pause) await wait(pause);
+        try { made = await R().buy(t.mint, hot.keypair, hot.rpcUrl, { pub: hot.pub, sol, slippage: slip(), priorityFee: fee() }); lastErr = null; break; }
+        catch (e) { lastErr = e; }
+      }
+      if (!made) { undo(); return log("error", launch ? `Copy of ${who}'s launch of ${coin} failed (tried for ${Math.round((now() - seenAt) / 1000)} s): ${short(lastErr, 320)}` : `Copy of ${who}'s buy of ${t.mint.slice(0, 6)}… failed: ${short(lastErr, 320)}`, tag); }
       if (dry) {
         const sim = await C.simulate(hot.rpcUrl, made.tx).catch(e => ({ err: short(e) }));
         undo();
