@@ -1,0 +1,101 @@
+# Builds Hatchr desktop for Windows, macOS and Linux on their own machines, then puts all
+# installers on one GitHub Release named after the version in package.json (v3.3.0 ...).
+# Runs on every push to main that changes the app, on a v* tag, or by hand from the Actions tab.
+# Pushing the same version again replaces that release's files; bump "version" for a new release.
+# File names have no version in them, so these links always point at the newest build:
+#   https://github.com/sologgg/hatchr/releases/latest/download/Hatchr-Setup.exe
+#   https://github.com/sologgg/hatchr/releases/latest/download/Hatchr-mac.dmg
+#   https://github.com/sologgg/hatchr/releases/latest/download/Hatchr-linux.AppImage
+#   https://github.com/sologgg/hatchr/releases/latest/download/Hatchr-linux.deb
+name: Build desktop apps
+on:
+  push:
+    branches: [main, build-test]   # build-test: build only, no release
+    tags: ["v*"]
+    paths:
+      - "app/**"
+      - "build/**"
+      - "*.js"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/**"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: --win --x64
+            name: windows
+          - os: macos-latest
+            target: --mac
+            name: mac
+          - os: ubuntu-latest
+            target: --linux
+            name: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # app/ holds the built Chrome extension (committed), so there is no sync step here
+      - run: npx electron-builder ${{ matrix.target }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      # the animated Windows installer (Squirrel) is written to dist/squirrel-windows/
+      - if: matrix.name == 'windows'
+        shell: bash
+        run: cp dist/squirrel-windows/Hatchr-Setup.exe dist/ && ls -la dist dist/squirrel-windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hatchr-${{ matrix.name }}
+          if-no-files-found: error
+          path: |
+            dist/Hatchr-Setup.exe
+            dist/Hatchr-win.zip
+            dist/Hatchr-mac.dmg
+            dist/Hatchr-linux.AppImage
+            dist/Hatchr-linux.deb
+
+  release:
+    needs: build
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: package.json
+      - id: ver
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - run: ls -la out
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: Hatchr ${{ steps.ver.outputs.version }}
+          make_latest: "true"
+          body: |
+            Hatchr desktop app. The main way to use Hatchr is the Chrome extension; this is the same tool as a standalone app. Website and privacy policy: https://hatchr.pro
+
+            | System | File |
+            |---|---|
+            | Windows 10/11 (64-bit) | **Hatchr-Setup.exe** (installer) or Hatchr-win.zip (portable) |
+            | macOS 13 Ventura or newer (Apple Silicon and Intel) | **Hatchr-mac.dmg** |
+            | Linux (64-bit) | **Hatchr-linux.AppImage** or Hatchr-linux.deb |
+
+            **First start**
+            - Windows: SmartScreen may say "Windows protected your PC". Click *More info*, then *Run anyway*. Hatchr then installs by itself in a few seconds and opens.
+            - macOS: open the dmg, drag the egg into Applications, open it once, then go to System Settings → Privacy & Security and click *Open Anyway*.
+            - Linux: make the AppImage executable (`chmod +x Hatchr-linux.AppImage`) and run it, or install the deb.
+          files: out/*

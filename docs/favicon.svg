@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <clipPath id="egg"><path id="e" d="M64 8C41 8 22 44 22 74c0 27 18 46 42 46s42-19 42-46C106 44 87 8 64 8z"/></clipPath>
+    <linearGradient id="gr" x1="30" y1="60" x2="100" y2="124" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#86EFAC"/><stop offset="1" stop-color="#4ADE80"/>
+    </linearGradient>
+    <linearGradient id="wh" x1="40" y1="8" x2="90" y2="70" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E9ECEF"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(64 64) scale(1.0915) translate(-65.938 -65.375) rotate(-28 64 66)">
+    <g clip-path="url(#egg)">
+      <rect x="0" y="0" width="128" height="128" fill="url(#gr)"/>
+      <!-- white top, split by a zigzag crack -->
+      <path d="M0 0H128V66L106 74 92 60 78 76 64 62 50 76 36 62 22 74 0 66z" fill="url(#wh)"/>
+      <!-- shine -->
+      <ellipse cx="48" cy="34" rx="7" ry="13" fill="#fff" opacity=".9" transform="rotate(20 48 34)"/>
+      <path d="M14 70 22 74 36 62 50 76 64 62 78 76 92 60 106 74 114 70" fill="none" stroke="#0E0F12" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>
+    </g>
+    <!-- outline -->
+    <path d="M64 8C41 8 22 44 22 74c0 27 18 46 42 46s42-19 42-46C106 44 87 8 64 8z" fill="none" stroke="#0E0F12" stroke-width="7"/>
+  </g></svg>

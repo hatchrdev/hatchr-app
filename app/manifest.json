@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "Hatchr – Memecoin Launcher",
+  "short_name": "Hatchr",
+  "version": "3.5.0",
+  "homepage_url": "https://hatchr.pro",
+  "description": "Launch pump.fun memecoins from breaking posts in seconds: AI names, images, meta tracking, one-click or auto mode.",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage", "unlimitedStorage", "sidePanel", "alarms", "notifications", "offscreen"],
+  "host_permissions": [
+    "https://axiom.trade/*",
+    "https://x.com/*",
+    "https://twitter.com/*",
+    "https://pbs.twimg.com/*",
+    "https://video.twimg.com/*",
+    "https://t.me/*",
+    "https://*.telesco.pe/*",
+    "https://*.cdn-telegram.org/*",
+    "https://pumpportal.fun/*",
+    "https://uploads.pinata.cloud/*",
+    "https://api.pinata.cloud/*",
+    "https://api.mainnet-beta.solana.com/*",
+    "https://mainnet.helius-rpc.com/*",
+    "https://api.groq.com/*",
+    "https://api.cloudflare.com/*",
+    "https://api.openai.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://api.coingecko.com/*"
+  ],
+  "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
+  "background": { "service_worker": "background.js" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "action": {
+    "default_title": "Hatchr",
+    "default_icon": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+  },
+  "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["content-x.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://axiom.trade/*"],
+      "js": ["content-axiom-main.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://axiom.trade/*"],
+      "js": ["content-axiom.js"],
+      "run_at": "document_start"
+    }
+  ]
+}
