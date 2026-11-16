@@ -1,0 +1,39 @@
+# Publishes the website (docs/) to Cloudflare Pages (project "hatchr": hatchr.pro, www.hatchr.pro) on every push to
+# main that changes it, or by hand from the Actions tab. Needs one repository secret, CLOUDFLARE_API_TOKEN: a
+# Cloudflare API token with only "Account · Cloudflare Pages · Edit". The token never appears in this file or the logs.
+name: Deploy website
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/**", ".github/workflows/site.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: The Cloudflare key is set
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Add the repository secret CLOUDFLARE_API_TOKEN (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - name: The site's files (without the leftovers from GitHub Pages)
+        run: mkdir -p site && rsync -a --exclude CNAME --exclude .nojekyll docs/ site/ && ls site
+      - name: Publish to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: fbcc0ca90c8fb87da381b4b0a9283298
+          command: pages deploy site --project-name=hatchr --branch=main --commit-dirty=true
