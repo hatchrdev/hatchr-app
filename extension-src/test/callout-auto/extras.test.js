@@ -267,6 +267,14 @@ const t = async (name, fn) => { await fn(); count++; console.log("ok  " + name);
     none.ctx.HatchrCaBuy.onPost(post({ text: `ca ${PUMP}` })); await sleep(140);
     assert.strictEqual(none.w.sent.length, 0); assert.strictEqual((await caState(none)).state.buysToday, 0);
     assert.ok(/no route to buy it with SOL\. PumpPortal: priced in another token, .{4}…\. Jupiter: Could not find any route/.test((await caState(none)).state.log[0].text), (await caState(none)).state.log[0].text);
+    // priced in another pump coin: pump.fun's own multi-hop route (lib/hops.js) builds it when the others cannot
+    const asked = [];
+    const hops = await caBoot({ quoteMint: SPCX, simErr: { InstructionError: [3, { Custom: 6063 }] }, jup: "none",
+      extra: () => ({ HatchrHops: { buy: async a => { asked.push(a); return { tx: { sign() {}, serialize: () => new Uint8Array(8) }, path: "SOL → 4FP2… → DqyA…" }; } } }) });
+    hops.ctx.HatchrCaBuy.onPost(post({ text: `ca ${PUMP}` })); await sleep(160);
+    assert.strictEqual(hops.w.sent.length, 1, "sent through pump.fun's route");
+    assert.strictEqual(asked[0].mint, PUMP); assert.strictEqual(asked[0].sol, caCfg().buySol);
+    assert.ok(/through pump\.fun's multi-hop route \(SOL → 4FP2… → DqyA…\)/.test((await caState(hops)).state.log.map(l => l.text).join("\n")), (await caState(hops)).state.log.map(l => l.text).join("\n"));
     // an address that is not a pump.fun one: the curve is not asked
     const plain = await caBoot({ quoteMint: SPCX });
     plain.ctx.HatchrCaBuy.onPost(post()); await sleep(100);

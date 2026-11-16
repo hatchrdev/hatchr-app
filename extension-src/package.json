@@ -1,7 +1,7 @@
 {
   "name": "hatchr-extension",
   "private": true,
-  "version": "3.9.1",
+  "version": "3.9.2",
   "description": "Source of the Hatchr Chrome extension. The desktop app wraps the same build (see ../sync.mjs).",
   "type": "module",
   "scripts": {
@@ -10,6 +10,7 @@
     "zip": "node build.mjs && cd extension && zip -q -r -X ../hatchr-extension.zip . -x \"source/*\" -x \"README.md\""
   },
   "dependencies": {
+    "@pump-fun/pump-sdk": "4.1.0",
     "@solana/web3.js": "^1.99.0",
     "bs58": "^6.0.0",
     "esbuild": "^0.28.2"

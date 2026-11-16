@@ -15,6 +15,7 @@ import { loadTokenConfig } from "./lib/token.js";
 import { calloutTexts, validMint } from "./lib/callout.js";
 import { PublicKey as PublicKeyStr, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
+import "./lib/hops.js"; // pump.fun's multi-hop route for coins priced in another pump coin (globalThis.HatchrHops)
 
 // settings plus a hook so AI naming can save a working model it switched to
 async function getSettings() {

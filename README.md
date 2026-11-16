@@ -74,6 +74,12 @@ wallet, RPC, stream and callout API) and `tests/electron-callout-auto.cjs` (the 
   up Y% within Z minutes, raises a desktop notification, a sound and, when set up, a message to your phone through
   your own Telegram bot. It only tells you; nothing is sold.
 
+**Coins priced in another pump coin (3.9.2)**, `src/lib/hops.js`: pump.fun lets a coin be paired with another pump coin
+($Daddy priced in $Huang, $Huang in SOL). PumpPortal and Jupiter cannot trade those with SOL; pump.fun's own
+`multi_hop_swap` can, SOL → Huang → Daddy in one transaction. Built with pump.fun's official SDK
+(`@pump-fun/pump-sdk` 4.1.0, MIT): the quote chain is read from each curve's quote mint, the route is priced with a dry
+run on your RPC (slippage taken off that), and selling walks the chain back to SOL. Checked with real chain data.
+
 **Trade tab (3.9)**: CA buy, Copy trade, Positions, Pump alerts and Auto callouts moved out of Settings into their
 own tab (`trade-ui.js`, `callout-auto-ui.js`), each page in short sections whose fields only show when they apply
 (`data-if` rules, the same language Settings now uses: `a`, `!a`, `a=x`, `a!=x`, `,` = and, `|` = or). The on/off

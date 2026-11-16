@@ -92,6 +92,18 @@
     return { tx: swap.value, route: `Jupiter (${hops(quote.value) || "swap"}), because PumpPortal cannot buy this coin (${whyNot})` };
   }
 
+  // A coin priced in another pump coin ($Daddy in $Huang in SOL): pump.fun's own multi-hop route, SOL → Huang → Daddy in
+  // one transaction (lib/hops.js, pump.fun's SDK). It prices the route with a dry run, so the result counts as simulated.
+  async function viaHops(mint, keypair, rpcUrl, o, side) {
+    const H = globalThis.HatchrHops;
+    if (!H) throw new Error("pump.fun's multi-hop route is not available here");
+    const args = { rpcUrl, user: keypair.publicKey.toBase58(), mint, slippage: o.slippage, priorityFee: o.priorityFee };
+    const made = side === "sell" ? await H.sell({ ...args, raw: o.amount }) : await H.buy({ ...args, sol: o.sol });
+    made.tx.sign([keypair]);
+    return { tx: made.tx, route: `pump.fun's multi-hop route (${made.path})`, simulated: true };
+  }
+  const reason = e => short(e && e.message ? e.message : e, 160);
+
   // A buy of o.sol SOL. Returns { tx (signed), route, simulated? } or throws with each route's reason.
   // Three requests leave at the same moment: PumpPortal's transaction, Jupiter's price, and what the coin is priced in.
   async function buy(mint, keypair, rpcUrl, o) {
@@ -99,19 +111,31 @@
     const building = settle(portal(mint, o, "buy")); // first out: this is the one the buy normally waits for
     const asked = settle(jupiterQuote(SOL, mint, Math.round(o.sol * 1e9), o.slippage)), quoteMint = Promise.resolve().then(() => pricedIn(mint, rpcUrl)).catch(() => "");
     const first = await building;
-    if (!first.value) return viaJupiter(asked, keypair, o, first.error);
+    if (!first.value) {
+      // PumpPortal could not build it: Jupiter, and for a coin priced in another pump coin pump.fun's own route
+      const [jupiter, hops] = await Promise.all([
+        viaJupiter(asked, keypair, o, first.error).then(value => ({ value }), e => ({ error: e })),
+        quoteMint.then(q => (q ? viaHops(mint, keypair, rpcUrl, o, "buy") : null)).then(value => ({ value }), e => ({ error: e }))
+      ]);
+      if (jupiter.value) return jupiter.value;
+      if (hops.value) return hops.value;
+      throw hops.error ? new Error(`${reason(jupiter.error)} pump.fun's own route: ${reason(hops.error)}.`) : jupiter.error;
+    }
     first.value.sign([keypair]);
     // the curve read is usually back before PumpPortal; an RPC that is slower than that is not waited for long
     const other = await Promise.race([quoteMint, wait(250).then(() => "")]);
     if (!other) return { tx: first.value, route: "PumpPortal" };
-    // Priced in another token. PumpPortal's transaction gets a dry run while Jupiter builds its own; the one that works is sent.
-    const [sim, jupiter] = await Promise.all([
+    // Priced in another token. PumpPortal's transaction gets a dry run while Jupiter and pump.fun's own multi-hop route
+    // build theirs; the one that works is sent (PumpPortal first, then pump.fun's route, then Jupiter).
+    const [sim, hops, jupiter] = await Promise.all([
       C.simulate(rpcUrl, first.value).catch(e => ({ err: short(e) })),
+      viaHops(mint, keypair, rpcUrl, o, "buy").then(value => ({ value }), e => ({ error: e })),
       viaJupiter(asked, keypair, o, `priced in another token, ${other.slice(0, 4)}…`).then(value => ({ value }), e => ({ error: e }))
     ]);
     if (sim && !sim.err) return { tx: first.value, route: "PumpPortal", simulated: true };
+    if (hops.value) return hops.value;
     if (jupiter.value) return jupiter.value;
-    throw jupiter.error;
+    throw new Error(`${reason(jupiter.error)} pump.fun's own route: ${reason(hops.error)}.`);
   }
 
   // A sell of o.pct % of what the wallet holds of the coin. o.raw: the raw amount held (string), if known.
@@ -122,7 +146,14 @@
     if (!raw) raw = (await core().tokenBalance(rpcUrl, o.pub, mint).catch(() => ({ raw: "0" }))).raw;
     const amount = (BigInt(raw || "0") * BigInt(Math.round(Math.min(100, o.pct) * 100))) / 10000n;
     if (amount <= 0n) throw new Error(`nothing of it in the wallet to sell. PumpPortal: ${first.error}.`);
-    const quote = await jupiterQuote(mint, SOL, amount.toString(), o.slippage).catch(e => { throw new Error(`no route to sell it. PumpPortal: ${first.error}. Jupiter: ${short(e, 100)}.`); });
+    // priced in another pump coin: pump.fun's own route back to SOL (Jupiter is the fallback)
+    const other = await pricedIn(mint, rpcUrl).catch(() => "");
+    let hopsError = "";
+    if (other) {
+      try { return await viaHops(mint, keypair, rpcUrl, { ...o, amount: amount.toString() }, "sell"); }
+      catch (e) { hopsError = ` pump.fun's own route: ${reason(e)}.`; }
+    }
+    const quote = await jupiterQuote(mint, SOL, amount.toString(), o.slippage).catch(e => { throw new Error(`no route to sell it. PumpPortal: ${first.error}. Jupiter: ${short(e, 100)}.${hopsError}`); });
     const tx = await jupiterTx(quote, o);
     tx.sign([keypair]);
     return { tx, route: `Jupiter (${hops(quote) || "swap"}), because PumpPortal cannot sell this coin (${first.error})` };
