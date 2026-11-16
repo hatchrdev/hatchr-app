@@ -3,10 +3,10 @@
 # Runs on every push to main that changes the app, on a v* tag, or by hand from the Actions tab.
 # Pushing the same version again replaces that release's files; bump "version" for a new release.
 # File names have no version in them, so these links always point at the newest build:
-#   https://github.com/sologgg/hatchr/releases/latest/download/Hatchr-Setup.exe
-#   https://github.com/sologgg/hatchr/releases/latest/download/Hatchr-mac.dmg
-#   https://github.com/sologgg/hatchr/releases/latest/download/Hatchr-linux.AppImage
-#   https://github.com/sologgg/hatchr/releases/latest/download/Hatchr-linux.deb
+#   https://github.com/hatchrdev/hatchr-app/releases/latest/download/Hatchr-Setup.exe
+#   https://github.com/hatchrdev/hatchr-app/releases/latest/download/Hatchr-mac.dmg
+#   https://github.com/hatchrdev/hatchr-app/releases/latest/download/Hatchr-linux.AppImage
+#   https://github.com/hatchrdev/hatchr-app/releases/latest/download/Hatchr-linux.deb
 name: Build desktop apps
 on:
   pull_request:
