@@ -11,7 +11,8 @@ Website: **[hatchr.pro](https://hatchr.pro)** · [Privacy](https://hatchr.pro/#p
 | System | File |
 |---|---|
 | Windows 10/11 (64-bit) | [Hatchr-Setup.exe](https://github.com/hatchrdev/hatchr-app/releases/latest/download/Hatchr-Setup.exe) · [portable zip](https://github.com/hatchrdev/hatchr-app/releases/latest/download/Hatchr-win.zip) |
-| macOS 13 Ventura or newer (Apple Silicon and Intel) | [Hatchr-mac.dmg](https://github.com/hatchrdev/hatchr-app/releases/latest/download/Hatchr-mac.dmg) |
+| macOS 13 Ventura or newer, Apple Silicon | [Hatchr-mac-arm64.zip](https://github.com/hatchrdev/hatchr-app/releases/latest/download/Hatchr-mac-arm64.zip) |
+| macOS 13 Ventura or newer, Intel | [Hatchr-mac-x64.zip](https://github.com/hatchrdev/hatchr-app/releases/latest/download/Hatchr-mac-x64.zip) |
 | Linux (64-bit) | [Hatchr-linux.AppImage](https://github.com/hatchrdev/hatchr-app/releases/latest/download/Hatchr-linux.AppImage) · [.deb](https://github.com/hatchrdev/hatchr-app/releases/latest/download/Hatchr-linux.deb) |
 
 The app is not signed by Microsoft or Apple yet, so the first start needs one extra click:
