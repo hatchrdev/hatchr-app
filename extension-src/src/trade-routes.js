@@ -23,6 +23,25 @@
     return text.slice(0, 180);
   }
 
+  // Why a sent transaction failed, read from its log: a slippage miss says how far the price ran, so the caller can try
+  // once more at the new price. { text, slippage (bool), movedPct (number|null) }
+  const SLIP_CODES = /Error Code: (ExceededSlippage|TooMuchSolRequired|BuySlippageBelowMinTokensOut|TooLittleSolReceived|SellSlippageBelowMinSolOut)/;
+  async function explainTx(rpcUrl, signature, err, o = {}) {
+    let logs = [];
+    try {
+      const tx = await core().rpc(rpcUrl, "getTransaction", [signature, { maxSupportedTransactionVersion: 0, commitment: "confirmed", encoding: "json" }]);
+      logs = (tx && tx.meta && tx.meta.logMessages) || [];
+    } catch { /* the error alone, then */ }
+    const all = logs.join("\n"), hit = all.match(SLIP_CODES);
+    if (!hit && !/"Custom":\s*(6002|6042)\b/.test(String(err || ""))) return { text: explain(err), slippage: false, movedPct: null };
+    const left = Number((all.match(/Left: (\d+)/) || [])[1]), right = Number((all.match(/Right: (\d+)/) || [])[1]);
+    const slip = Number(o.slippage) || 0;
+    // ExceededSlippage / TooMuchSolRequired: Left is the most you allowed to pay (your amount plus slippage), Right what it cost
+    const paying = !hit || /ExceededSlippage|TooMuchSolRequired/.test(hit[1]);
+    const moved = paying && left > 0 && right > 0 ? Math.round((right / left * (1 + slip / 100) - 1) * 100) : null;
+    return { text: moved !== null ? `the price rose about ${moved}% before it landed, more than your ${slip}% slippage` : `the price moved more than your ${slip ? slip + "% " : ""}slippage before it landed`, slippage: true, movedPct: moved };
+  }
+
   // o: { pub, sol (buy) | pct (sell), slippage, priorityFee }
   async function portal(mint, o, action) {
     const body = action === "sell"
@@ -164,7 +183,7 @@
   // paid), never under 0.0001 and never over FEE_CAP SOL. Helius RPCs give the levels directly; any other RPC gives
   // the recent fees, from which the same percentile is taken. Kept for 30 seconds.
   const PUMP_AMM = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA", FEE_CAP = 0.003, FEE_MIN = 0.0001, CU = 150000;
-  const BOOST_SLIPPAGE = Object.freeze({ buy: 30, copy: 25, sell: 25 }); // what Boost sets: a fresh coin moves fast
+  const BOOST_SLIPPAGE = Object.freeze({ buy: 35, copy: 35, sell: 30 }); // what Boost sets: a fresh coin moves fast, and a slippage miss is no fill
   let feeCache = null;
   async function feeEstimate(rpcUrl) {
     if (feeCache && feeCache.url === rpcUrl && Date.now() - feeCache.at < 30000) return feeCache.value;
@@ -197,5 +216,5 @@
     fetch("https://lite-api.jup.ag/swap/v1/quote", { method: "OPTIONS" }).catch(() => {});
   }
 
-  globalThis.HatchrRoutes = Object.freeze({ buy, sell, explain, pricedIn, creatorOf, warm, base58, feeEstimate, BOOST_SLIPPAGE, FEE_CAP, SOL, PUMP_PROGRAM });
+  globalThis.HatchrRoutes = Object.freeze({ buy, sell, explain, explainTx, pricedIn, creatorOf, warm, base58, feeEstimate, BOOST_SLIPPAGE, FEE_CAP, SOL, PUMP_PROGRAM });
 })();

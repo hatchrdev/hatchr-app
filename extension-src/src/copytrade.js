@@ -334,17 +334,31 @@
         if (!sim.err) position(t, who, sol, null, true, w);
         return;
       }
-      const signature = await C.send(hot.rpcUrl, made.tx, true).catch(e => { undo(); throw e; });
-      const sent = now();
-      log("buy", launch
-        ? `Copied ${who}'s launch: bought ${sol} SOL of ${coin}, sent ${sent - seenAt} ms after they created it, through ${made.route}. Waiting for it to confirm…`
-        : `Copied ${who}: bought ${sol} SOL of ${t.mint} (they spent ${t.sol.toFixed(3)} SOL), sent ${sent - seenAt} ms after their trade was seen, through ${made.route}. Waiting for it to confirm…`, { ...tag, signature });
-      try { globalThis.HatchrPush && globalThis.HatchrPush.event(`🔁 Copy trade: ${launch ? `${who} launched ${coin}` : `${who} bought ${t.mint}`}\n${sol} SOL sent in ${sent - seenAt} ms.\nhttps://pump.fun/coin/${t.mint}`); } catch { /* bonus */ }
-      let failed = "";
-      try { await C.confirm(hot.rpcUrl, signature, 45000); } catch (e) { failed = R().explain(short(e, 400)); }
-      let held = { ui: 0 };
-      for (let i = 0; i < 4 && !(held.ui > 0); i++) { if (i) await wait(1500); held = await C.tokenBalance(hot.rpcUrl, hot.pub, t.mint).catch(() => ({ ui: 0 })); if (failed) break; }
-      if (!(held.ui > 0)) { undo(); return log("error", `The copy of ${who}'s buy of ${t.mint.slice(0, 6)}… did not go through${failed ? `: ${failed}` : ""}. Only the fees were spent.`, { ...tag, signature }); }
+      let held = { ui: 0 }, signature = "";
+      // A slippage miss (the price ran past your slippage in the second before it landed) is tried once more at the
+      // new price, with the same SOL and slippage, while the trade is still fresh.
+      for (let attempt = 1; ; attempt++) {
+        signature = await C.send(hot.rpcUrl, made.tx, true).catch(e => { undo(); throw e; });
+        const sent = now();
+        log("buy", attempt > 1
+          ? `Trying once more at the new price: ${sol} SOL of ${t.mint.slice(0, 6)}… sent through ${made.route}. Waiting for it to confirm…`
+          : launch
+            ? `Copied ${who}'s launch: bought ${sol} SOL of ${coin}, sent ${sent - seenAt} ms after they created it, through ${made.route}. Waiting for it to confirm…`
+            : `Copied ${who}: bought ${sol} SOL of ${t.mint} (they spent ${t.sol.toFixed(3)} SOL), sent ${sent - seenAt} ms after their trade was seen, through ${made.route}. Waiting for it to confirm…`, { ...tag, signature });
+        if (attempt === 1) { try { globalThis.HatchrPush && globalThis.HatchrPush.event(`🔁 Copy trade: ${launch ? `${who} launched ${coin}` : `${who} bought ${t.mint}`}\n${sol} SOL sent in ${sent - seenAt} ms.\nhttps://pump.fun/coin/${t.mint}`); } catch { /* bonus */ } }
+        let failed = "", why = null;
+        try { await C.confirm(hot.rpcUrl, signature, 45000); } catch (e) { why = await R().explainTx(hot.rpcUrl, signature, short(e, 400), { slippage: slip() }); failed = why.text; }
+        held = { ui: 0 };
+        for (let i = 0; i < 4 && !(held.ui > 0); i++) { if (i) await wait(1500); held = await C.tokenBalance(hot.rpcUrl, hot.pub, t.mint).catch(() => ({ ui: 0 })); if (failed) break; }
+        if (held.ui > 0) break;
+        if (why && why.slippage && attempt === 1 && now() - seenAt < 20000) {
+          log("skip", `The copy of ${who}'s buy of ${t.mint.slice(0, 6)}… missed: ${failed}. Only the fees were spent.`, { ...tag, signature });
+          try { made = await R().buy(t.mint, hot.keypair, hot.rpcUrl, { pub: hot.pub, sol, slippage: slip(), priorityFee: fee() }); continue; }
+          catch (e) { undo(); return log("error", `Could not try ${t.mint.slice(0, 6)}… again: ${short(e, 240)}`, tag); }
+        }
+        undo();
+        return log("error", `The copy of ${who}'s buy of ${t.mint.slice(0, 6)}… did not go through${failed ? `: ${failed}` : ""}. Only the fees were spent.${why && why.slippage ? " Coins that run this fast need more slippage (Speed section on this page)." : ""}`, { ...tag, signature });
+      }
       log("buy", `Confirmed: holding ${Math.round(held.ui).toLocaleString("en-US")} of ${t.mint.slice(0, 6)}… (copied from ${who}).`, { ...tag, signature });
       position(t, who, sol, held.ui, false, w);
       try { globalThis.HatchrCalloutAuto && globalThis.HatchrCalloutAuto.boughtElsewhere(t.mint, hot.pub, held.ui, false); } catch { /* shows up at the next wallet check */ }

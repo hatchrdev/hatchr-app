@@ -60,7 +60,7 @@ function boot(files, o = {}) {
   ctx.WebSocket = class { constructor(url) { this.url = url; this.sent = []; w.sockets.push(this); setTimeout(() => this.onopen && this.onopen(), 5); } send(m) { this.sent.push(JSON.parse(m)); } close() { this.closed = true; } };
   ctx.globalThis = ctx;
   ctx.HatchrCore = { settings: async () => ({ ...w.storage.local.settings }), secret: async () => (o.noWallet ? "" : "secret"), keypair: () => ({ publicKey: { toBase58: () => "WALLETxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" } }),
-    rpc: async (u, method, params) => { w.calls.push("rpc:" + method); if (method === "getPriorityFeeEstimate") return w.feeLevels ? { priorityFeeLevels: w.feeLevels } : null; if (method === "getRecentPrioritizationFees") return w.recentFees || []; if (method === "getAccountInfo" && params[0] in w.accounts) return { value: { data: [w.accounts[params[0]], "base64"] } }; if (method === "getTransaction") return w.txs[params[0]] || null; if (method === "getTokenAccountsByOwner") { const raw = (w.owned[params[0]] || {})[params[1].mint]; return { value: raw === undefined ? [] : [{ account: { data: { parsed: { info: { tokenAmount: { amount: String(raw) } } } } } }] }; } if (method === "getAccountInfo") { if (w.rpcHangs) return new Promise(() => {}); return { value: w.quoteMint ? { data: [btoa(String.fromCharCode(...w.quoteMint)), "base64"] } : null }; } if (method === "getMultipleAccounts") return { value: params[0].map(k => w.curves[k] ? { data: [w.curves[k], "base64"] } : null) }; throw new Error("unexpected rpc " + method); },
+    rpc: async (u, method, params) => { w.calls.push("rpc:" + method); if (method === "getTransaction" && w.txLogs) return { meta: { logMessages: w.txLogs } }; if (method === "getPriorityFeeEstimate") return w.feeLevels ? { priorityFeeLevels: w.feeLevels } : null; if (method === "getRecentPrioritizationFees") return w.recentFees || []; if (method === "getAccountInfo" && params[0] in w.accounts) return { value: { data: [w.accounts[params[0]], "base64"] } }; if (method === "getTransaction") return w.txs[params[0]] || null; if (method === "getTokenAccountsByOwner") { const raw = (w.owned[params[0]] || {})[params[1].mint]; return { value: raw === undefined ? [] : [{ account: { data: { parsed: { info: { tokenAmount: { amount: String(raw) } } } } } }] }; } if (method === "getAccountInfo") { if (w.rpcHangs) return new Promise(() => {}); return { value: w.quoteMint ? { data: [btoa(String.fromCharCode(...w.quoteMint)), "base64"] } : null }; } if (method === "getMultipleAccounts") return { value: params[0].map(k => w.curves[k] ? { data: [w.curves[k], "base64"] } : null) }; throw new Error("unexpected rpc " + method); },
     balance: async () => { w.calls.push("balance"); return w.balanceSol; }, tokenBalance: async () => { w.calls.push("tokenBalance"); return { ui: w.walletTokens }; },
     send: async (u, tx, skip) => { w.calls.push("send"); if (w.sendFails) throw new Error("RPC refused the transaction"); w.sent.push({ skip, at: w.clock }); return "SIG" + w.sent.length; }, simulate: async () => { w.sims++; w.calls.push("simulate"); return { err: o.simErr || null }; },
     confirm: async () => { w.calls.push("confirm"); if (o.confirmFails) throw new Error('Transaction failed on-chain: {"InstructionError":[3,{"Custom":6002}]}'); return {}; },
@@ -193,11 +193,26 @@ const t = async (name, fn) => { await fn(); count++; console.log("ok  " + name);
     assert.strictEqual(e.ctx.HatchrCaBuy.wantsPosts(), true);
   });
 
+  await t("a slippage miss read from the transaction's log says how far the price ran (pump-amm ExceededSlippage)", async () => {
+    const e = boot(["trade-routes.js"]); await sleep(60);
+    e.w.txLogs = ["Program log: AnchorError thrown in programs/pump-amm/src/instructions/swap/buy.rs:405. Error Code: ExceededSlippage. Error Number: 6004. Error Message: ExceededSlippage.", "Program log: Left: 500000000", "Program log: Right: 576407437"];
+    const why = await e.ctx.HatchrRoutes.explainTx("http://rpc", "SIG", '{"InstructionError":[4,{"Custom":6004}]}', { slippage: 25 });
+    assert.strictEqual(why.slippage, true); assert.strictEqual(why.movedPct, 44);
+    assert.strictEqual(why.text, "the price rose about 44% before it landed, more than your 25% slippage");
+    e.w.txLogs = ["Program log: Instruction: Buy", "Program log: AnchorError occurred. Error Code: BondingCurveComplete. Error Number: 6005."];
+    const other = await e.ctx.HatchrRoutes.explainTx("http://rpc", "SIG", '{"InstructionError":[3,{"Custom":6005}]}', { slippage: 25 });
+    assert.strictEqual(other.slippage, false); assert.ok(/left the bonding curve/.test(other.text));
+  });
+
   await t("CA buy: a buy that fails is reported; a coin PumpPortal cannot build may be tried again; callout hand-off", async () => {
     const f = await caBoot({ confirmFails: true, walletTokens: 0 });
     f.ctx.HatchrCaBuy.onPost(post()); await sleep(120);
     const s = await caState(f);
-    assert.ok(s.state.log.some(l => l.kind === "error" && /price moved more than your slippage allows/.test(l.text)), JSON.stringify(s.state.log.map(l => l.text)));
+    // a slippage miss: tried once more at the new price, then reported with the advice to raise the slippage
+    assert.strictEqual(f.w.sent.length, 2, "sent twice: the first try and one more at the new price");
+    assert.ok(s.state.log.some(l => l.kind === "skip" && /missed: the price moved more than your 25% slippage before it landed/.test(l.text)), JSON.stringify(s.state.log.map(l => l.text)));
+    assert.ok(s.state.log.some(l => /Trying once more at the new price/.test(l.text)));
+    assert.ok(s.state.log.some(l => l.kind === "error" && /did not go through: the price moved .*Coins that run this fast need more slippage/.test(l.text)), JSON.stringify(s.state.log.map(l => l.text)));
     assert.strictEqual(s.state.buysToday, 0, "a failed buy does not use up the day's number");
     const p = await caBoot({ portal: 400, jup: "none" });
     p.ctx.HatchrCaBuy.onPost(post()); await sleep(80);
@@ -518,7 +533,7 @@ const t = async (name, fn) => { await fn(); count++; console.log("ok  " + name);
     const c = await caBoot({ cfg: caCfg({ boost: true }), settings: { rpcUrl: "https://mainnet.helius-rpc.com/?api-key=k" }, feeLevels: { high: 4_000_000 } });
     c.ctx.HatchrCaBuy.onPost(post()); await sleep(100);
     const body = c.w.fetches.find(f => f.method === "POST" && /pumpportal/.test(f.url)).body;
-    assert.strictEqual(body.priorityFee, 0.0006); assert.strictEqual(body.slippage, 30);
+    assert.strictEqual(body.priorityFee, 0.0006); assert.strictEqual(body.slippage, 35);
   });
 
   // ------------------------------------------------------------------ positions and automatic exits

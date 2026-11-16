@@ -42,7 +42,7 @@
   const pill = (on, test) => (on ? (test ? '<span class="ca-pill test">TEST</span>' : '<span class="ca-pill live">LIVE</span>') : "");
 
   // ---------- ⚡ Boost: the network's fee of the moment instead of a fixed one ----------
-  const BOOST_SLIP = { buy: 30, copy: 25, sell: 25 };
+  const BOOST_SLIP = { buy: 35, copy: 35, sell: 30 }; // trade-routes.js BOOST_SLIPPAGE
   function boostBlock(idp, kp, x, fee, kind) {
     const on = !!x[`boost`];
     const now = fee && fee.fee ? `${fee.fee} SOL now (${esc(fee.how)}${fee.capped ? ", held at the cap" : ""})` : "read from your RPC when it is needed";

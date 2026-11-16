@@ -242,19 +242,30 @@
     // straight to the RPC, without the RPC's own dry run first (that costs time)
     const callouts = globalThis.HatchrCalloutAuto;
     try { callouts && callouts.expectBuy && callouts.expectBuy(mint); } catch { /* only stops a double callout */ }
-    const signature = await C.send(rpcUrl, tx, true);
-    const sent = now();
-    log("buy", `Bought ${what}: ${cfg.buySol} SOL sent ${sent - got} ms ${clock}${!how && age > 0 ? ` (the post was ${(age / 1000).toFixed(1)} s old by then)` : ""}, through ${made.route}. Waiting for it to confirm…`, { ...tag, signature });
-    try { globalThis.HatchrPush && globalThis.HatchrPush.event(`🎯 ${how ? `Launch watch: @${actor}'s ${how.coin}` : `CA buy: @${actor} posted ${mint}`}\n${cfg.buySol} SOL sent in ${sent - got} ms.\nhttps://pump.fun/coin/${mint}`); } catch { /* phone message is a bonus */ }
+    let signature = "", held = { ui: 0 }, sending = tx;
+    // A slippage miss (the price ran past your slippage before the buy landed) is tried once more at the new price,
+    // with the same SOL and slippage, while it is still fresh.
+    for (let attempt = 1; ; attempt++) {
+      signature = await C.send(rpcUrl, sending, true);
+      const sent = now();
+      log("buy", attempt > 1
+        ? `Trying once more at the new price: ${cfg.buySol} SOL of ${mint.slice(0, 6)}… sent through ${made.route}. Waiting for it to confirm…`
+        : `Bought ${what}: ${cfg.buySol} SOL sent ${sent - got} ms ${clock}${!how && age > 0 ? ` (the post was ${(age / 1000).toFixed(1)} s old by then)` : ""}, through ${made.route}. Waiting for it to confirm…`, { ...tag, signature });
+      if (attempt === 1) { try { globalThis.HatchrPush && globalThis.HatchrPush.event(`🎯 ${how ? `Launch watch: @${actor}'s ${how.coin}` : `CA buy: @${actor} posted ${mint}`}\n${cfg.buySol} SOL sent in ${sent - got} ms.\nhttps://pump.fun/coin/${mint}`); } catch { /* phone message is a bonus */ } }
 
-    // everything after this is off the clock
-    let failed = "";
-    try { await C.confirm(rpcUrl, signature, 45000); } catch (e) { failed = explain(short(e, 400)); }
-    let held = { ui: 0 };
-    for (let i = 0; i < 4 && !(held.ui > 0); i++) { if (i) await wait(1500); held = await C.tokenBalance(rpcUrl, hot.pub, mint).catch(() => ({ ui: 0 })); if (failed) break; }
-    if (!(held.ui > 0)) {
+      // everything after this is off the clock
+      let failed = "", why = null;
+      try { await C.confirm(rpcUrl, signature, 45000); } catch (e) { why = await R().explainTx(rpcUrl, signature, short(e, 400), { slippage: slip() }); failed = why.text; }
+      held = { ui: 0 };
+      for (let i = 0; i < 4 && !(held.ui > 0); i++) { if (i) await wait(1500); held = await C.tokenBalance(rpcUrl, hot.pub, mint).catch(() => ({ ui: 0 })); if (failed) break; }
+      if (held.ui > 0) break;
+      if (why && why.slippage && attempt === 1 && now() - got < 20000) {
+        log("skip", `The buy of ${mint.slice(0, 6)}… missed: ${failed}. Only the fees were spent.`, { ...tag, signature });
+        try { made = await R().buy(mint, keypair, rpcUrl, { pub: hot.pub, sol: cfg.buySol, slippage: slip(), priorityFee: fee() }); sending = made.tx; continue; }
+        catch (e) { failed = `${failed}; trying again was not possible: ${short(e, 160)}`; }
+      }
       st.buysToday = Math.max(0, st.buysToday - 1);
-      log("error", `The buy of ${how ? how.coin + " " : ""}${mint.slice(0, 6)}… from @${actor}'s post did not go through${failed ? `: ${failed}` : ""}. Only the fees were spent.`, { ...tag, signature });
+      log("error", `The buy of ${how ? how.coin + " " : ""}${mint.slice(0, 6)}… from @${actor}'s post did not go through${failed ? `: ${failed}` : ""}. Only the fees were spent.${why && why.slippage ? " Coins that run this fast need more slippage (Buy section on this page)." : ""}`, { ...tag, signature });
       try { globalThis.HatchrPush && globalThis.HatchrPush.event(`⚠️ CA buy of ${mint.slice(0, 6)}… did not go through${failed ? `: ${failed}` : ""}.`); } catch { /* bonus */ }
       return;
     }
